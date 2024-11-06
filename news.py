@@ -136,7 +136,7 @@ def translate_content(content):
         response = client.chat.completions.create(
             model="openai/o1-mini-2024-09-12",
             messages=[
-                {"role": "system", "content": "You are a professional crypto news translator specializing in English to Thai translation. You understand both crypto terminology and Thai language conventions."},
+                {"role": "system", "content": "You are a professional crypto news translator specializing in English to Thai translation. You understand both crypto news terminology and Thai language conventions."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.7,
@@ -165,7 +165,7 @@ st.title("Crypto News Translator")
 st.subheader("English to Thai News Translation")
 
 # URL Input - Make it more compact
-col1, col2 = st.columns([3, 1])
+col1, col2, col3 = st.columns([3, 0.5, 0.5])
 with col1:
     url = st.text_input("Enter the English news article URL:", 
                        value=st.session_state.url,
@@ -173,17 +173,31 @@ with col1:
                        key="url_input")
 with col2:
     extract_button = st.button("Extract and Translate", use_container_width=True)
+with col3:
+    if st.button("Clear", use_container_width=True):
+        st.session_state.clear()
+        st.rerun()
 
-if extract_button and url != st.session_state.url:
+if extract_button:
     if url:
         with st.spinner("Fetching and analysing content..."):
             html_content = fetch_content(url)
-            if html_content:
+            if html_content:  # Check if content was successfully fetched
                 # Extract content
-                st.session_state.extracted_content = extract_content(html_content)
-                # Translate content
-                st.session_state.translated_content = translate_content(st.session_state.extracted_content)
-                st.session_state.url = url
+                extracted_content = extract_content(html_content)
+                if extracted_content and any(extracted_content.values()):  # Check if extraction was successful
+                    st.session_state.extracted_content = extracted_content
+                    # Translate content
+                    translated_content = translate_content(extracted_content)
+                    if translated_content:  # Check if translation was successful
+                        st.session_state.translated_content = translated_content
+                        st.session_state.url = url
+                    else:
+                        st.error("Translation failed. Please try again.")
+                else:
+                    st.error("Could not extract content from the webpage. Please check the URL.")
+            else:
+                st.error("Could not fetch content from the URL. Please check if the URL is accessible.")
 
 # Display content if available in session state
 if st.session_state.extracted_content and st.session_state.translated_content:
