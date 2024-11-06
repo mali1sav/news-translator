@@ -164,19 +164,28 @@ init_session_state()
 st.title("Crypto News Translator")
 st.subheader("English to Thai News Translation")
 
-# URL Input - Make it more compact
-col1, col2, col3 = st.columns([3, 0.5, 0.5])
+# URL Input and buttons on the same row
+col1, col2, col3 = st.columns([4, 1, 1])  # Adjust ratio for URL input and two buttons
 with col1:
     url = st.text_input("Enter the English news article URL:", 
                        value=st.session_state.url,
                        label_visibility="collapsed",
                        key="url_input")
 with col2:
-    extract_button = st.button("Extract and Translate", use_container_width=True)
+    extract_button = st.button(
+        "Extract and Translate", 
+        type="primary",  # Makes the button green
+        use_container_width=True
+    )
 with col3:
-    if st.button("Clear", use_container_width=True):
-        st.session_state.clear()
-        st.rerun()
+    st.button(
+        "Clear Session",  # Shortened text
+        use_container_width=True,
+        help="Click to clear all previous translations",
+        type="secondary",
+        key="clear_button",
+        on_click=lambda: (st.session_state.clear(), st.rerun())
+    )
 
 if extract_button:
     if url:
