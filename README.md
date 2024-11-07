@@ -8,8 +8,5 @@ A Streamlit application that extracts English crypto news articles and translate
 - Translates content from English to Thai using OpenRouter API, maintaining crypto terminology
 - Provides side-by-side comparison of original and translated content
 - Includes editable text areas for post-translation refinement
-- Exports translated content as formatted text files with timestamps
+- Exports translated content as formatted Document
 
-## Setup
-
-1. Create a `.env` file with your OpenRouter API key:
