@@ -7,3 +7,4 @@ lxml==4.9.3
 requests==2.31.0
 trafilatura==1.5.0
 openai==0.2
+docx
