@@ -396,7 +396,7 @@ def display_content_comparison(content: Dict, translated_content: Dict):
             st.text_area(
                 label="English Title",
                 value=content.get('title', ''),
-                height=40,
+                height=68,
                 key="en_title_main_unique"
             )
             
@@ -412,7 +412,7 @@ def display_content_comparison(content: Dict, translated_content: Dict):
                 st.text_area(
                     label="English H1",
                     value=content['h1'],
-                    height=40,
+                    height=68,
                     key="en_h1_main_unique"
                 )
         
@@ -420,7 +420,7 @@ def display_content_comparison(content: Dict, translated_content: Dict):
             st.text_area(
                 label="Thai Title",
                 value=translated_content.get('title', ''),
-                height=40,
+                height=68,
                 key="th_title_main_unique"
             )
             
@@ -436,7 +436,7 @@ def display_content_comparison(content: Dict, translated_content: Dict):
                 st.text_area(
                     label="Thai H1",
                     value=translated_content['h1'],
-                    height=40,
+                    height=68,
                     key="th_h1_main_unique"
                 )
 
@@ -470,7 +470,7 @@ def display_content_comparison(content: Dict, translated_content: Dict):
                             st.text_area(
                                 label=f"English List Item {section_idx + 1}.{item_idx + 1}.{li_idx + 1}",
                                 value=li,
-                                height=40,
+                                height=68,
                                 key=f"en_list_{section_idx}_{item_idx}_{li_idx}_unique"
                             )
                     elif item['type'] == 'table':
@@ -478,14 +478,14 @@ def display_content_comparison(content: Dict, translated_content: Dict):
                             st.text_area(
                                 label=f"English Table Headers {section_idx + 1}.{item_idx + 1}",
                                 value=" | ".join(item['headers']),
-                                height=40,
+                                height=68,
                                 key=f"en_table_header_{section_idx}_{item_idx}_unique"
                             )
                         for row_idx, row in enumerate(item.get('data', [])):
                             st.text_area(
                                 label=f"English Table Row {section_idx + 1}.{item_idx + 1}.{row_idx + 1}",
                                 value=" | ".join(row),
-                                height=40,
+                                height=68,
                                 key=f"en_table_{section_idx}_{item_idx}_{row_idx}_unique"
                             )
                     elif item['type'] == 'quote':
@@ -518,7 +518,7 @@ def display_content_comparison(content: Dict, translated_content: Dict):
                             st.text_area(
                                 label=f"Thai List Item {section_idx + 1}.{item_idx + 1}.{li_idx + 1}",
                                 value=li,
-                                height=40,
+                                height=68,
                                 key=f"th_list_{section_idx}_{item_idx}_{li_idx}_unique"
                             )
                     elif item['type'] == 'table':
@@ -526,14 +526,14 @@ def display_content_comparison(content: Dict, translated_content: Dict):
                             st.text_area(
                                 label=f"Thai Table Headers {section_idx + 1}.{item_idx + 1}",
                                 value=" | ".join(item['headers']),
-                                height=40,
+                                height=68,
                                 key=f"th_table_header_{section_idx}_{item_idx}_unique"
                             )
                         for row_idx, row in enumerate(item.get('data', [])):
                             st.text_area(
                                 label=f"Thai Table Row {section_idx + 1}.{item_idx + 1}.{row_idx + 1}",
                                 value=" | ".join(row),
-                                height=40,
+                                height=68,
                                 key=f"th_table_{section_idx}_{item_idx}_{row_idx}_unique"
                             )
                     elif item['type'] == 'quote':
