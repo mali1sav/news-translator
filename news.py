@@ -453,7 +453,7 @@ def display_content_comparison(content: Dict, translated_content: Dict):
                 st.text_area(
                     label=f"English Heading {section_idx + 1}",
                     value=orig_section.get('heading', ''),
-                    height=20,
+                    height=68,
                     key=f"en_heading_{section_idx}_unique"
                 )
                 
@@ -501,7 +501,7 @@ def display_content_comparison(content: Dict, translated_content: Dict):
                     st.text_area(
                         label=f"Thai Heading {section_idx + 1}",
                         value=trans_section['heading'],
-                        height=20,
+                        height=68,
                         key=f"th_heading_{section_idx}_unique"
                     )
                 
