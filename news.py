@@ -396,7 +396,7 @@ def display_content_comparison(content: Dict, translated_content: Dict):
             st.text_area(
                 label="English Title",
                 value=content.get('title', ''),
-                height=20,
+                height=40,
                 key="en_title_main_unique"
             )
             
@@ -412,7 +412,7 @@ def display_content_comparison(content: Dict, translated_content: Dict):
                 st.text_area(
                     label="English H1",
                     value=content['h1'],
-                    height=20,
+                    height=40,
                     key="en_h1_main_unique"
                 )
         
@@ -420,7 +420,7 @@ def display_content_comparison(content: Dict, translated_content: Dict):
             st.text_area(
                 label="Thai Title",
                 value=translated_content.get('title', ''),
-                height=20,
+                height=40,
                 key="th_title_main_unique"
             )
             
@@ -436,7 +436,7 @@ def display_content_comparison(content: Dict, translated_content: Dict):
                 st.text_area(
                     label="Thai H1",
                     value=translated_content['h1'],
-                    height=20,
+                    height=40,
                     key="th_h1_main_unique"
                 )
 
