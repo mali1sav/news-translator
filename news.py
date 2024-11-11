@@ -174,7 +174,7 @@ Requirements:
         response = await client.post(
             "/chat/completions",
             json={
-                "model": "openai/o1-mini",
+                "model": "anthropic/claude-3.5-sonnet",
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"Create a Thai meta description for this article:\n{content}"}
@@ -468,7 +468,7 @@ Rules:
         response = await client.post(
             "/chat/completions",
             json={
-                "model": "openai/o1-mini",
+                "model": "anthropic/claude-3.5-sonnet",
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": text}
