@@ -1,384 +1,656 @@
 import streamlit as st
-from dotenv import load_dotenv
 import os
-from urllib.parse import urlparse
-import requests
-import random
-import time
-from typing import Optional, List, Dict
-from bs4 import BeautifulSoup
 import asyncio
 import httpx
+from dotenv import load_dotenv
 from docx import Document
 from io import BytesIO
+from typing import List, Dict, Any
 
 # Load environment variables
 load_dotenv()
 
-# Initialize OpenAI client with OpenRouter
+# Constants
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 if not OPENROUTER_API_KEY:
     st.error("OPENROUTER_API_KEY not found in environment variables.")
     st.stop()
 
-client = httpx.AsyncClient(
-    base_url="https://openrouter.ai/api/v1",
-    headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"}
-)
+API_BASE_URL = "https://openrouter.ai/api/v1"
+HEADERS = {"Authorization": f"Bearer {OPENROUTER_API_KEY}"}
 
-# Default URL
-DEFAULT_URL = "https://cryptonews.com/news/ripple-ceo-brad-garlinghouse-celebrates-crypto-candidates-victory-in-u-s-election-2024/"
+# Initialize Async Client
+client = httpx.AsyncClient(base_url=API_BASE_URL, headers=HEADERS)
 
-def get_random_user_agent() -> str:
-    """Return a random user agent string."""
-    user_agents = [
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)\
-         Chrome/58.0.3029.110 Safari/537.3',
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)\
-         Version/14.0.3 Safari/605.1.15',
-        # Add more user agents as needed
-    ]
-    return random.choice(user_agents)
+# Revised TAGS Structure
+TAGS = {
+    "Primary Categories": [
+        "Bitcoin News",
+        "Ethereum News",
+        "Altcoin News",
+        "DeFi News",
+        "NFT News",
+        "Industry News"
+    ],
+    "Topics": [
+        "Market Trends",
+        "Exchange News",
+        "Technical Analysis",
+        "Cyber Security",
+        "Technology",
+        "Regulation",
+        "Adoption",
+        "Investment",
+        "Partnership",
+        "SEC",
+        "Legal"
+    ],
+    "Cryptocurrencies": {
+        "Layer 1": [
+            "Solana",
+            "Cardano",
+            "Avalanche",
+            "Polkadot",
+            "Cosmos",
+            "NEAR Protocol",
+            "Fantom",
+            "TRON",
+            "Other Layer 1"
 
-def fetch_webpage(url: str, max_retries: int = 3) -> Optional[str]:
-    """Fetch webpage content with retry logic."""
-    headers = {
-        'User-Agent': get_random_user_agent(),
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-    }
+        ],
+        "Layer 2": [
+            "Polygon",
+            "Arbitrum",
+            "Optimism",
+            "Base",
+            "Other Layer 2"
+        ],
+        "Infrastructure": [
+            "Chainlink",
+            "The Graph",
+            "Quant",
+            "Ren Protocol",
+            "Other Infrastructure"
+        ],
+        "DeFi": [
+            "Protocols",
+            "Uniswap",
+            "Aave",
+            "Maker",
+            "Curve",
+            "Synthetix",
+            "Compound",
+            "Other DeFi platforms"
+        ],
+        "AI": [
+            "Render",
+            "Fetch.ai",
+            "Ocean Protocol",
+            "TAO",
+            "Other AI coins"
+        ],
 
-    for attempt in range(max_retries):
-        try:
-            st.write(f"Fetching URL (attempt {attempt + 1})")
-            response = requests.get(url, headers=headers, timeout=30)
-            response.raise_for_status()
-            return response.text
-        except Exception as e:
-            st.error(f"Error fetching webpage (attempt {attempt + 1}): {str(e)}")
-            if attempt < max_retries - 1:
-                time.sleep(2 ** attempt)
-            continue
-    return None
-
-def extract_structured_content(html: str, url: str) -> Dict:
-    """Extract structured content from HTML using BeautifulSoup."""
-    try:
-        soup = BeautifulSoup(html, 'lxml')
-        
-        # Remove author sections and other unwanted content first
-        unwanted_classes = [
-            'single-post-new__author-top',  # Author section
-            'author', 'byline', 'meta', 'post-meta', 'site-info', 
-            'footer', 'nav', 'advertisement', 'ad', 'sidebar', 'newsletter',
-            'author-bio', 'author-box', 'author-info'
+        "Gaming & Metaverse": [
+            "The Sandbox",
+            "Decentraland",
+            "Axie Infinity",
+            "Immutable X",
+            "Other Gaming & Metaverse"
+        ],
+        "Meme": [
+            "Dogecoin",
+            "Shiba Inu",
+            "Pepe",
+            "Floki",
+            "Bonk",
+            "Friend.tech",
+            "Memecoin",
+            "Other Meme"
+        ],
+        "Stable Coins": [
+            "Tether",
+            "USDC",
+            "DAI",
+            "Other Stable Coins"
         ]
-        
-        for class_name in unwanted_classes:
-            for element in soup.find_all(class_=class_name):
-                element.decompose()
+    },
+    "Market Infrastructure": {
+        "Exchanges": [
+            "Coinbase",
+            "Binance",
+            "Kraken",
+            "KuCoin",
+            "OKx",
+            "Gemini",
+            "Bitfinex",
+            "Bitstamp",
+            "Other Exchanges"
+        ],
+        "Data & Analytics": [
+            "CoinGecko",
+            "CoinMarketCap",
+            "Glassnode",
+            "Messari",
+            "Chainalysis",
+            "Etherscan",
+            "Other Data & Analytics"
+        ],
+        "Wallets & Custody": [
+            "Ledger",
+            "Trezor",
+            "MetaMask",
+            "Trust Wallet",
+            "Exodus",
+            "Tangem",
+            "Other Wallets & Custody"
+        ]
+    }
+}
 
-        content = {
+# Update the ALL_TAGS generation
+ALL_TAGS = set(TAGS["Primary Categories"])
+ALL_TAGS.update(TAGS["Topics"])
+for category in TAGS["Cryptocurrencies"].values():
+    ALL_TAGS.update(category)
+for category in TAGS["Market Infrastructure"].values():
+    ALL_TAGS.update(category)
+ALL_TAGS = sorted(ALL_TAGS)  # Sorted list for consistent ordering
+
+async def generate_meta_description(content: str) -> str:
+    """
+    Generate a Thai meta description using LLM.
+    """
+    system_prompt = """
+You are a professional crypto content writer. Create a meta description in Thai for this crypto news article.
+Requirements:
+- Exactly 160 characters maximum
+- Capture the key points: price movements, market impact, and key events
+- Use natural Thai language
+- Keep cryptocurrency names in English
+- Focus on the main news angle and impact
+- Return ONLY the meta description text
+"""
+    try:
+        response = await client.post(
+            "/chat/completions",
+            json={
+                "model": "anthropic/claude-3.5-sonnet",
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"Create a Thai meta description for this article:\n{content}"}
+                ]
+            },
+            timeout=60
+        )
+        response.raise_for_status()
+        data = response.json()
+        thai_meta = data['choices'][0]['message']['content'].strip()
+        # Ensure it's not longer than 160 characters
+        if len(thai_meta) > 160:
+            thai_meta = thai_meta[:157] + "..."
+        return thai_meta
+    except Exception as e:
+        st.error(f"Meta description generation error: {e}")
+        return "ไม่มีคำอธิบาย"
+
+def parse_article(content: str) -> Dict[str, Any]:
+    """
+    Parse the article content into structured elements with content split into chunks.
+    Each chunk contains 2-3 paragraphs separated by blank lines.
+    """
+    try:
+        parsed_content = {
             'title': '',
             'meta_description': '',
             'h1': '',
             'sections': []
         }
 
-        # Extract title
-        if soup.title:
-            content['title'] = soup.title.string.strip()
+        # Split content into lines and clean up
+        lines = [line.strip() for line in content.split('\n') if line.strip()]
 
-        # Extract meta description
-        meta_desc = soup.find('meta', {'name': ['description', 'og:description']})
-        if meta_desc and meta_desc.get('content'):
-            content['meta_description'] = meta_desc['content']
+        # Skip unwanted content
+        skip_patterns = [
+            'Crypto Reporter',
+            'Share',
+            'Last updated:',
+            'Why Trust Cryptonews',
+            'GMT'
+        ]
 
-        # Extract H1
-        h1_tag = soup.find('h1')
-        if h1_tag:
-            content['h1'] = h1_tag.text.strip()
+        content_lines = [line for line in lines if not any(pattern in line for pattern in skip_patterns)]
 
-        # Find main content area
-        main_content = soup.find(['main', 'article']) or soup.find(class_=[
-            'content', 'main-content', 'article-content', 'entry-content', 
-            'post-content', 'article-body', 'story-content'
-        ])
+        if not content_lines:
+            raise ValueError("No valid content found after filtering.")
 
-        if main_content:
-            current_section = None
+        # Extract title (first line)
+        parsed_content['title'] = content_lines[0]
+        parsed_content['h1'] = content_lines[0]
 
-            # Remove author information and unwanted elements
-            unwanted_classes = [
-                'author', 'byline', 'meta', 'post-meta', 'site-info', 
-                'footer', 'nav', 'advertisement', 'ad', 'sidebar', 'newsletter'
-            ]
-            for unwanted_class in unwanted_classes:
-                for div in main_content.find_all(class_=unwanted_class):
-                    div.decompose()
+        # Assume the first paragraph after the title is the meta description
+        if len(content_lines) > 1:
+            parsed_content['meta_description'] = content_lines[1]
+        else:
+            parsed_content['meta_description'] = "Not provided"
 
-            # Remove unwanted tags globally within main_content
-            unwanted_tags = ['script', 'style', 'aside', 'noscript', 'iframe']
-            for tag in unwanted_tags:
-                for element in main_content.find_all(tag):
-                    element.decompose()
+        # Process main content into sections based on headings
+        current_section = {'heading': 'Main Content', 'content': []}
+        for line in content_lines[1:]:
+            if line.isupper() or line.endswith(':'):  # Simple heuristic for headings
+                if current_section['content']:
+                    current_section['content'] = '\n\n'.join(current_section['content'])
+                    parsed_content['sections'].append(current_section)
+                current_section = {'heading': line, 'content': []}
+            else:
+                current_section['content'].append(line)
+        # Add the last section
+        if current_section['content']:
+            current_section['content'] = '\n\n'.join(current_section['content'])
+            parsed_content['sections'].append(current_section)
 
-            # Initialize with a default section if no headings are present
-            if not main_content.find(['h2', 'h3']):
-                current_section = {
-                    'heading': 'Main Content',
-                    'content': []
-                }
-                content['sections'].append(current_section)
+        # Further split main content into chunks of 2-3 paragraphs
+        for section in parsed_content['sections']:
+            paragraphs = section['content'].split('\n\n')
+            chunks = [paragraphs[i:i + 3] for i in range(0, len(paragraphs), 3)]
+            chunked_sections = []
+            for chunk in chunks:
+                chunked_sections.append({
+                    'heading': section['heading'],
+                    'content': '\n\n'.join(chunk)
+                })
+            section['chunks'] = chunked_sections
+            del section['content']  # Remove original content
 
-            # Process content elements
-            for element in main_content.find_all(['h2', 'h3', 'p', 'ul', 'ol', 'table', 'blockquote']):
-                # Skip elements with unwanted text
-                text = element.get_text(strip=True).lower()
-                if text in ['main content', 'เนื้อหาหลัก', 'about author', 'author bio']:
-                    continue
+        # Validate parsed content
+        if not parsed_content['title'] or not parsed_content['sections']:
+            raise ValueError("Missing required content elements")
 
-                # Start new section on headings
-                if element.name in ['h2', 'h3']:
-                    current_section = {
-                        'heading': element.text.strip(),
-                        'content': []
-                    }
-                    content['sections'].append(current_section)
-                    continue
-
-                # Create default section if none exists
-                if not current_section:
-                    current_section = {
-                        'heading': 'Main Content',  # Default heading
-                        'content': []
-                    }
-                    content['sections'].append(current_section)
-
-                # Process content
-                if element.name == 'p' and len(text) > 20:
-                    current_section['content'].append({
-                        'type': 'paragraph',
-                        'text': element.text.strip()
-                    })
-                elif element.name in ['ul', 'ol']:
-                    items = [li.text.strip() for li in element.find_all('li') if li.text.strip()]
-                    if items:
-                        current_section['content'].append({
-                            'type': 'list',
-                            'items': items,
-                            'list_type': element.name
-                        })
-                elif element.name == 'table':
-                    table_data = []
-                    headers = []
-
-                    # Extract headers
-                    header_row = element.find('thead')
-                    if header_row:
-                        headers = [th.text.strip() for th in header_row.find_all(['th', 'td'])]
-
-                    # Extract data rows
-                    for row in element.find_all('tr'):
-                        cells = [cell.text.strip() for cell in row.find_all(['th', 'td'])]
-                        if any(cells) and cells != headers:  # Skip empty rows and header row
-                            table_data.append(cells)
-
-                    if table_data:
-                        current_section['content'].append({
-                            'type': 'table',
-                            'headers': headers,
-                            'data': table_data
-                        })
-                elif element.name == 'blockquote':
-                    quote_text = element.text.strip()
-                    if quote_text:
-                        current_section['content'].append({
-                            'type': 'quote',
-                            'text': quote_text
-                        })
-
-        return content
+        return parsed_content
 
     except Exception as e:
-        st.error(f"Error extracting structured content: {str(e)}")
-        return {'title': '', 'meta_description': '', 'h1': '', 'sections': []}
+        st.error(f"Error parsing article content: {str(e)}")
+        return {'title': '', 'meta_description': 'Not provided', 'h1': '', 'sections': []}
 
-async def translate_text_async(client: httpx.AsyncClient, system_prompt: str, text: str) -> str:
-    """Asynchronously translate text using OpenRouter API."""
+async def categorize_with_llm(content: str) -> List[str]:
+    """
+    Categorize the news article using Gemini and return a list of relevant tags.
+    """
+    system_prompt = """You are a cryptocurrency news categorization expert. Analyze this article and suggest relevant tags.
+
+Content Analysis Requirements:
+1. Primary Category (Must include one):
+   - If about Bitcoin: "Bitcoin News"
+   - If about Ethereum: "Ethereum News"
+   - If about other cryptocurrencies: "Altcoin News"
+
+2. Specific Cryptocurrencies:
+   - Identify all mentioned cryptocurrencies
+   - Include their ecosystem tags (e.g., "Solana", "Cardano", etc.)
+
+3. Market Infrastructure:
+   - Identify mentioned exchanges, wallets, or data providers
+   - Include relevant infrastructure tags
+
+4. Topics:
+   - Market analysis/trends
+   - Technical developments
+   - Regulatory news
+   - Business developments
+
+5. Special Categories:
+   - Check for DeFi, NFT, or Gaming content
+   - Identify if content relates to Layer 1/Layer 2 solutions
+
+Rules:
+- Maximum 5 most relevant tags
+- Only use tags from the provided list
+- Prioritize specificity over generality
+- Ensure tags accurately reflect the main focus of the article
+
+Return only comma-separated tags from the available list."""
+
     try:
         response = await client.post(
-            "https://openrouter.ai/api/v1/chat/completions",
+            "/chat/completions",
+            json={
+                "model": "google/gemini-flash-1.5-8b",
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"Available tags:\n{', '.join(ALL_TAGS)}\n\nArticle content for analysis:\n{content}"}
+                ],
+                "temperature": 0.3,  # Lower temperature for more focused responses
+                "max_tokens": 100    # Limit response length
+            },
+            timeout=60
+        )
+        response.raise_for_status()
+        data = response.json()
+        tags_str = data['choices'][0]['message']['content'].strip()
+        
+        # Process and validate tags
+        suggested_tags = [tag.strip() for tag in tags_str.split(',') if tag.strip() in ALL_TAGS]
+        
+        # Ensure we have at least one primary category
+        has_primary = any(tag in TAGS["Primary Categories"] for tag in suggested_tags)
+        if not has_primary:
+            # Add most relevant primary category based on content
+            if 'bitcoin' in content.lower():
+                suggested_tags.insert(0, "Bitcoin News")
+            elif 'ethereum' in content.lower():
+                suggested_tags.insert(0, "Ethereum News")
+            else:
+                suggested_tags.insert(0, "Altcoin News")
+        
+        return suggested_tags[:5]  # Return top 5 tags
+        
+    except Exception as e:
+        st.error(f"Categorization error: {e}")
+        return []
+
+def display_tag_section(current_tags: List[str]):
+    """
+    Display all tags in 6 columns with clear headings.
+    """
+    st.markdown("### Tag Management")
+    st.write("Current Tags:", ", ".join(current_tags))
+    
+    # Create 6 columns
+    cols = st.columns(6)
+    
+    # Column 1: Primary Categories
+    with cols[0]:
+        st.markdown("##### Primary Categories")
+        for tag in TAGS["Primary Categories"]:
+            key = f"primary_{tag.replace(' ', '_')}"
+            if st.checkbox(tag, value=tag in current_tags, key=key):
+                if tag not in current_tags:
+                    current_tags.append(tag)
+                elif tag in current_tags:
+                    current_tags.remove(tag)
+    
+    # Column 2: Topics
+    with cols[1]:
+        st.markdown("##### Topics")
+        for tag in TAGS["Topics"]:
+            key = f"topic_{tag.replace(' ', '_')}"
+            if st.checkbox(tag, value=tag in current_tags, key=key):
+                if tag not in current_tags:
+                    current_tags.append(tag)
+                elif tag in current_tags:
+                    current_tags.remove(tag)
+    
+    # Column 3-4: Cryptocurrencies (split into two columns due to length)
+    crypto_categories = list(TAGS["Cryptocurrencies"].items())
+    mid = len(crypto_categories) // 2
+    
+    with cols[2]:
+        st.markdown("##### Cryptocurrencies (1/2)")
+        for category, coins in crypto_categories[:mid]:
+            st.markdown(f"###### {category}")
+            for tag in coins:
+                key = f"crypto_{category}_{tag.replace(' ', '_')}"
+                if st.checkbox(tag, value=tag in current_tags, key=key):
+                    if tag not in current_tags:
+                        current_tags.append(tag)
+                    elif tag in current_tags:
+                        current_tags.remove(tag)
+    
+    with cols[3]:
+        st.markdown("##### Cryptocurrencies (2/2)")
+        for category, coins in crypto_categories[mid:]:
+            st.markdown(f"###### {category}")
+            for tag in coins:
+                key = f"crypto_{category}_{tag.replace(' ', '_')}"
+                if st.checkbox(tag, value=tag in current_tags, key=key):
+                    if tag not in current_tags:
+                        current_tags.append(tag)
+                    elif tag in current_tags:
+                        current_tags.remove(tag)
+    
+    # Column 5: Market Infrastructure - Exchanges & Data
+    with cols[4]:
+        st.markdown("##### Market Infrastructure (1/2)")
+        for category in ["Exchanges", "Data & Analytics"]:
+            st.markdown(f"###### {category}")
+            for tag in TAGS["Market Infrastructure"][category]:
+                key = f"infra_{category}_{tag.replace(' ', '_').replace('.', '_')}"
+                if st.checkbox(tag, value=tag in current_tags, key=key):
+                    if tag not in current_tags:
+                        current_tags.append(tag)
+                    elif tag in current_tags:
+                        current_tags.remove(tag)
+    
+    # Column 6: Market Infrastructure - Wallets & Others
+    with cols[5]:
+        st.markdown("##### Market Infrastructure (2/2)")
+        for category in ["Wallets & Custody"]:
+            st.markdown(f"###### {category}")
+            for tag in TAGS["Market Infrastructure"][category]:
+                key = f"infra_{category}_{tag.replace(' ', '_').replace('.', '_')}"
+                if st.checkbox(tag, value=tag in current_tags, key=key):
+                    if tag not in current_tags:
+                        current_tags.append(tag)
+                    elif tag in current_tags:
+                        current_tags.remove(tag)
+    
+    # Update session state
+    st.session_state['current_tags'] = current_tags
+
+async def translate_text(text: str, is_title: bool = False, is_h1: bool = False) -> str:
+    """
+    Translate text from English to Thai using OpenRouter's translation service.
+    """
+    if is_title:
+        system_prompt = """You are a Thai crypto news translator. Translate this title to Thai.
+Rules:
+- Maximum 70 Thai characters
+- Keep cryptocurrency names in English
+- Maintain key message
+- Return ONLY the translated text, no explanations
+- Do not add quotes or formatting"""
+    elif is_h1:
+        system_prompt = """You are a Thai crypto news translator. Translate this H1 to Thai.
+Rules:
+- Match the original English length as closely as possible
+- Keep cryptocurrency names in English
+- Maintain full meaning
+- Return ONLY the translated text, no explanations
+- Do not add quotes or formatting"""
+    else:
+        system_prompt = """You are a Thai crypto news translator. Translate this text to Thai.
+Rules:
+- Use natural Thai language
+- Keep cryptocurrency names in English
+- Return ONLY the translated text, no explanations
+- Do not add quotes or formatting"""
+
+    try:
+        response = await client.post(
+            "/chat/completions",
             json={
                 "model": "anthropic/claude-3.5-sonnet",
                 "messages": [
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"Translate the following text into Thai following system prompt instructions:\n{text}"}
+                    {"role": "user", "content": text}
                 ]
             },
-            timeout=60  # Adjust timeout as needed
+            timeout=60
         )
         response.raise_for_status()
         data = response.json()
         translated_text = data['choices'][0]['message']['content'].strip()
+        
+        # Additional check for title length
+        if is_title and len(translated_text) > 70:
+            # Retry with stronger emphasis on length
+            return await translate_text(f"Translate this title in under 70 Thai characters: {text}", is_title=True)
+            
         return translated_text
     except Exception as e:
-        st.error(f"Translation error: {str(e)}")
-        return text  # Return original text if translation fails
+        st.error(f"Translation error: {e}")
+        return text
 
-async def translate_content_async(content: Dict, system_prompt: str) -> Dict:
-    """Asynchronously translate all relevant fields in the content."""
-    translated_content = {
-        'title': '',
-        'meta_description': '',
-        'h1': '',
-        'sections': []
+async def translate_section(section: Dict[str, str]) -> Dict[str, str]:
+    """
+    Translate a single section's heading and content.
+    """
+    translated_heading = await translate_text(section.get('heading', ''))
+    translated_content = await translate_text(section.get('content', ''))
+    return {
+        'heading': translated_heading,
+        'content': translated_content
     }
 
-    tasks = []
+def determine_primary_category(crypto: str) -> str:
+    """
+    Determine the primary category based on the cryptocurrency.
+    """
+    if crypto.lower() == 'bitcoin':
+        return 'Bitcoin News'
+    elif crypto.lower() == 'ethereum':
+        return 'Ethereum News'
+    else:
+        return 'Altcoin News'
 
-    # Collect all texts to translate
-    if content.get('title'):
-        tasks.append(translate_text_async(client, system_prompt, content['title']))
-    if content.get('meta_description'):
-        tasks.append(translate_text_async(client, system_prompt, content['meta_description']))
-    if content.get('h1'):
-        tasks.append(translate_text_async(client, system_prompt, content['h1']))
+async def translate_content(structured_content: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Translate each element of the structured content and categorize with tags.
+    """
+    translated = {}
+    translated['title'] = await translate_text(structured_content.get('title', ''), is_title=True)
+    translated['h1'] = await translate_text(structured_content.get('h1', ''), is_h1=True)
+    translated['meta_description'] = await translate_text(structured_content.get('meta_description', ''))
+    
+    # Translate sections concurrently
+    sections = structured_content.get('sections', [])
+    translated_sections = []
+    for section in sections:
+        chunks = section.get('chunks', [])
+        translated_chunks = await asyncio.gather(
+            *[
+                translate_section(chunk)
+                for chunk in chunks
+            ]
+        )
+        translated_sections.append({
+            'heading': section.get('heading', ''),
+            'chunks': translated_chunks
+        })
+    translated['sections'] = translated_sections
+    
+    # Combine all content for categorization
+    combined_content = f"{structured_content.get('title', '')} {structured_content.get('meta_description', '')} " \
+                       + ' '.join([
+                           chunk['content'] 
+                           for section in structured_content.get('sections', []) 
+                           for chunk in section.get('chunks', [])
+                       ])
+    
+    # Get tags from LLM
+    tags = await categorize_with_llm(combined_content)
+    
+    # Add mandatory tags based on content analysis
+    mandatory_tags = []
+    content_lower = combined_content.lower()
+    
+    # Check for major cryptocurrencies
+    if 'bitcoin' in content_lower or ' btc ' in content_lower:
+        mandatory_tags.extend(['Bitcoin News', 'BTC'])
+    if 'ethereum' in content_lower or ' eth ' in content_lower:
+        mandatory_tags.extend(['Ethereum News', 'ETH'])
+    if 'solana' in content_lower or ' sol ' in content_lower:
+        mandatory_tags.extend(['Altcoin News', 'SOL'])
+    
+    # Check for specific entities
+    for category, entities in TAGS["Market Infrastructure"].items():
+        for entity in entities:
+            if entity.lower() in content_lower:
+                if entity not in mandatory_tags:
+                    mandatory_tags.append(entity)
+    
+    # Remove duplicates while preserving order
+    seen = set()
+    all_tags = []
+    for tag in (mandatory_tags + tags):
+        if tag not in seen and tag in ALL_TAGS:
+            seen.add(tag)
+            all_tags.append(tag)
+    
+    translated['tags'] = all_tags[:5]  # Keep top 5 tags
+    return translated
 
-    for section in content.get('sections', []):
-        if section.get('heading'):
-            tasks.append(translate_text_async(client, system_prompt, section['heading']))
-        for item in section.get('content', []):
-            if item['type'] in ['paragraph', 'quote']:
-                tasks.append(translate_text_async(client, system_prompt, item['text']))
-            elif item['type'] == 'list':
-                for li in item['items']:
-                    tasks.append(translate_text_async(client, system_prompt, li))
-            elif item['type'] == 'table':
-                for row in item['data']:
-                    for cell in row:
-                        tasks.append(translate_text_async(client, system_prompt, cell))
-
-    # Perform all translations concurrently
-    translations = await asyncio.gather(*tasks, return_exceptions=True)
-
-    # Assign translations back to the structured content
-    translation_iter = iter(translations)
-
-    # Translate title
-    translated_content['title'] = next(translation_iter, content.get('title', ''))
-
-    # Translate meta_description
-    translated_content['meta_description'] = next(translation_iter, content.get('meta_description', ''))
-
-    # Translate h1
-    translated_content['h1'] = next(translation_iter, content.get('h1', ''))
-
-    # Translate sections
-    for section in content.get('sections', []):
-        translated_section = {'heading': '', 'content': []}
-        # Translate heading
-        translated_section['heading'] = next(translation_iter, section.get('heading', ''))
-        # Translate content
-        for item in section.get('content', []):
-            translated_item = {'type': item['type']}
-            if item['type'] in ['paragraph', 'quote']:
-                translated_item['text'] = next(translation_iter, item.get('text', ''))
-            elif item['type'] == 'list':
-                translated_items = []
-                for _ in item['items']:
-                    translated_items.append(next(translation_iter, ''))
-                translated_item['items'] = translated_items
-                translated_item['list_type'] = item.get('list_type', 'ul')
-            elif item['type'] == 'table':
-                translated_headers = item.get('headers', [])
-                translated_data = []
-                for row in item.get('data', []):
-                    translated_row = []
-                    for _ in row:
-                        translated_row.append(next(translation_iter, ''))
-                    translated_data.append(translated_row)
-                translated_item['headers'] = translated_headers
-                translated_item['data'] = translated_data
-            translated_section['content'].append(translated_item)
-        translated_content['sections'].append(translated_section)
-
-    return translated_content
-
-def create_comparison_doc(url: str, content: Dict, translated_content: Dict) -> BytesIO:
-    """Create a .docx document with side-by-side comparison in memory."""
+def create_docx(original: Dict[str, Any], translated: Dict[str, Any]) -> BytesIO:
+    """
+    Create a .docx document with side-by-side comparison of original and translated content.
+    """
     doc = Document()
     
     # Title
     doc.add_heading('Crypto News Translation Comparison', 0)
-    doc.add_paragraph(f"Original URL: {url}")
     
-    # Add Title, Meta & H1 section
-    doc.add_heading('Title, Meta & H1', level=1)
+    # Tags section at the top
+    current_tags = st.session_state.get('current_tags', [])
+    doc.add_paragraph(f"Tags: {', '.join(current_tags)}")
+    doc.add_paragraph(f"Original URL: {original.get('url', 'N/A')}")
+    
+    # Title Comparison
+    doc.add_heading('Title', level=1)
     table = doc.add_table(rows=1, cols=2)
     table.style = 'Light List Accent 1'
     hdr_cells = table.rows[0].cells
     hdr_cells[0].text = 'English'
     hdr_cells[1].text = 'Thai'
-    
-    # Add Title
-    if content.get('title'):
-        row = table.add_row().cells
-        row[0].text = 'Title:\n' + content['title']
-        row[1].text = 'Title:\n' + translated_content.get('title', '')
-    
-    # Add Meta Description
-    if content.get('meta_description'):
-        row = table.add_row().cells
-        row[0].text = 'Meta Description:\n' + content['meta_description']
-        row[1].text = 'Meta Description:\n' + translated_content.get('meta_description', '')
-    
-    # Add H1
-    if content.get('h1'):
-        row = table.add_row().cells
-        row[0].text = 'H1:\n' + content['h1']
-        row[1].text = 'H1:\n' + translated_content.get('h1', '')
 
-    # Main Content Sections
-    for section_idx, (orig_section, trans_section) in enumerate(zip(content.get('sections', []), translated_content.get('sections', []))):
-        # Skip sections with heading "Main Content"
-        if orig_section.get('heading', '').strip().lower() == "main content":
-            continue
+    row = table.add_row().cells
+    row[0].text = original.get('title', '')
+    row[1].text = translated.get('title', '')
 
-        doc.add_heading(f"Section {section_idx + 1}: {orig_section.get('heading', '')}", level=1)
-        table = doc.add_table(rows=1, cols=2)
-        table.style = 'Light List Accent 1'
-        hdr_cells = table.rows[0].cells
-        hdr_cells[0].text = 'English'
-        hdr_cells[1].text = 'Thai'
+    # Meta Description Comparison
+    doc.add_heading('Meta Description', level=1)
+    table = doc.add_table(rows=1, cols=2)
+    table.style = 'Light List Accent 1'
+    hdr_cells = table.rows[0].cells
+    hdr_cells[0].text = 'English'
+    hdr_cells[1].text = 'Thai'
 
-        # Heading
-        row = table.add_row().cells
-        row[0].text = orig_section.get('heading', '')
-        row[1].text = trans_section.get('heading', '')
+    row = table.add_row().cells
+    row[0].text = original.get('meta_description', '')
+    row[1].text = translated.get('meta_description', '')
 
-        # Process section content
-        for orig_item, trans_item in zip(orig_section.get('content', []), trans_section.get('content', [])):
-            if orig_item['type'] == 'paragraph':
-                row = table.add_row().cells
-                row[0].text = orig_item.get('text', '')
-                row[1].text = trans_item.get('text', '')
-            elif orig_item['type'] == 'list':
-                orig_list = '\n'.join([f"- {li}" for li in orig_item.get('items', [])])
-                trans_list = '\n'.join([f"- {li}" for li in trans_item.get('items', [])])
-                row = table.add_row().cells
-                row[0].text = orig_list
-                row[1].text = trans_list
-            elif orig_item['type'] == 'table':
-                orig_table = '\n'.join([' | '.join(row) for row in orig_item.get('data', [])])
-                trans_table = '\n'.join([' | '.join(row) for row in trans_item.get('data', [])])
-                row = table.add_row().cells
-                row[0].text = orig_table
-                row[1].text = trans_table
-            elif orig_item['type'] == 'quote':
-                row = table.add_row().cells
-                row[0].text = f"\"{orig_item.get('text', '')}\""
-                row[1].text = f"\"{trans_item.get('text', '')}\""
+    # Published Time Comparison
+    doc.add_heading('Published Time', level=1)
+    table = doc.add_table(rows=1, cols=2)
+    table.style = 'Light List Accent 1'
+    hdr_cells = table.rows[0].cells
+    hdr_cells[0].text = 'English'
+    hdr_cells[1].text = 'Thai'
+
+    row = table.add_row().cells
+    row[0].text = original.get('published_time', '')
+    row[1].text = translated.get('published_time', '')  # Assuming time doesn't need translation
+
+    # Main Content Comparison
+    doc.add_heading('Main Content', level=1)
+    for i, (orig_section, trans_section) in enumerate(zip(
+        original.get('sections', []), 
+        translated.get('sections', [])
+    )):
+        doc.add_heading(f"Section {i+1}: {orig_section['heading']}", level=2)
+        for j, (orig_chunk, trans_chunk) in enumerate(zip(
+            orig_section.get('chunks', []), 
+            trans_section.get('chunks', [])
+        )):
+            table = doc.add_table(rows=1, cols=2)
+            table.style = 'Light List Accent 1'
+            hdr_cells = table.rows[0].cells
+            hdr_cells[0].text = 'English'
+            hdr_cells[1].text = 'Thai'
+
+            row = table.add_row().cells
+            row[0].text = orig_chunk['content']
+            row[1].text = trans_chunk['content']
+            
+            doc.add_paragraph()  # Blank line between chunks
 
     # Save to in-memory file
     doc_io = BytesIO()
@@ -386,281 +658,196 @@ def create_comparison_doc(url: str, content: Dict, translated_content: Dict) -> 
     doc_io.seek(0)
     return doc_io
 
+def display_comparison(original: Dict[str, Any], translated: Dict[str, Any]):
+    """
+    Display side-by-side comparison with editable text areas.
+    """
+    st.markdown("## Content Comparison")
 
-def display_content_comparison(content: Dict, translated_content: Dict):
-    """Display original and translated content side by side with unique keys."""
-    # Title, Meta & H1
-    with st.expander("Title, Meta & H1", expanded=True):
+    # Original URL and Tags
+    st.text(f"Original URL: {original.get('url', '')}")
+    st.text(f"Tags: {', '.join(translated.get('tags', [])) if translated.get('tags') else 'N/A'}")
+    st.markdown("---")
+
+    # Title, H1 & Meta Description
+    with st.expander("Title, H1 & Meta Description", expanded=True):
         col1, col2 = st.columns(2)
         with col1:
-            st.text_area(
-                label="English Title",
-                value=content.get('title', ''),
-                height=68,
-                key="en_title_main_unique"
-            )
-            
-            if content.get('meta_description'):             
-                st.text_area(
-                    label="English Meta Description",
-                    value=content['meta_description'],
-                    height=100,
-                    key="en_meta_main_unique"
-                )
-            
-            if content.get('h1'):        
-                st.text_area(
-                    label="English H1",
-                    value=content['h1'],
-                    height=68,
-                    key="en_h1_main_unique"
-                )
-        
+            st.subheader("English")
+            st.text_area("Title", value=original.get('title', ''), height=100, key="en_title")
+            st.text_area("H1", value=original.get('h1', ''), height=100, key="en_h1")
+            st.text_area("Meta Description", value=original.get('meta_description', 'Not provided'), height=100, key="en_meta", disabled=True)
         with col2:
-            st.text_area(
-                label="Thai Title",
-                value=translated_content.get('title', ''),
-                height=68,
-                key="th_title_main_unique"
-            )
-            
-            if translated_content.get('meta_description'):
-                st.text_area(
-                    label="Thai Meta Description",
-                    value=translated_content['meta_description'],
-                    height=100,
-                    key="th_meta_main_unique"
-                )
-            
-            if translated_content.get('h1'):
-                st.text_area(
-                    label="Thai H1",
-                    value=translated_content['h1'],
-                    height=68,
-                    key="th_h1_main_unique"
-                )
+            st.subheader("Thai")
+            st.text_area("Title", value=translated.get('title', ''), height=100, key="th_title")
+            st.text_area("H1", value=translated.get('h1', ''), height=100, key="th_h1")
+            st.text_area("Meta Description ภาษาไทย", value=translated.get('meta_description', ''), height=100, key="th_meta")
 
-    # Main Content
-    for section_idx, (orig_section, trans_section) in enumerate(zip(content.get('sections', []), translated_content.get('sections', []))):
-        # Skip sections with heading "Main Content"
-        if orig_section.get('heading', '').strip().lower() == "main content":
-            continue
-        
-        with st.expander(f"Section {section_idx + 1}: {orig_section.get('heading', '')}", expanded=True):
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.text_area(
-                    label=f"English Heading {section_idx + 1}",
-                    value=orig_section.get('heading', ''),
-                    height=68,
-                    key=f"en_heading_{section_idx}_unique"
-                )
-                
-                for item_idx, item in enumerate(orig_section.get('content', [])):
-                    if item['type'] == 'paragraph':
-                        st.text_area(
-                            label=f"English Paragraph {section_idx + 1}.{item_idx + 1}",
-                            value=item.get('text', ''),
-                            height=100,
-                            key=f"en_para_{section_idx}_{item_idx}_unique"
-                        )
-                    elif item['type'] == 'list':
-                        for li_idx, li in enumerate(item.get('items', [])):
-                            st.text_area(
-                                label=f"English List Item {section_idx + 1}.{item_idx + 1}.{li_idx + 1}",
-                                value=li,
-                                height=68,
-                                key=f"en_list_{section_idx}_{item_idx}_{li_idx}_unique"
-                            )
-                    elif item['type'] == 'table':
-                        if item.get('headers'):
-                            st.text_area(
-                                label=f"English Table Headers {section_idx + 1}.{item_idx + 1}",
-                                value=" | ".join(item['headers']),
-                                height=68,
-                                key=f"en_table_header_{section_idx}_{item_idx}_unique"
-                            )
-                        for row_idx, row in enumerate(item.get('data', [])):
-                            st.text_area(
-                                label=f"English Table Row {section_idx + 1}.{item_idx + 1}.{row_idx + 1}",
-                                value=" | ".join(row),
-                                height=68,
-                                key=f"en_table_{section_idx}_{item_idx}_{row_idx}_unique"
-                            )
-                    elif item['type'] == 'quote':
-                        st.text_area(
-                            label=f"English Quote {section_idx + 1}.{item_idx + 1}",
-                            value=item.get('text', ''),
-                            height=120,
-                            key=f"en_quote_{section_idx}_{item_idx}_unique"
-                        )
-            
-            with col2:
-                if trans_section.get('heading'):
+    # Main Content Sections
+    with st.expander("Main Content", expanded=True):
+        for i, (orig_section, trans_section) in enumerate(zip(
+            original.get('sections', []), 
+            translated.get('sections', [])
+        )):
+            st.markdown(f"### Section {i+1}: {orig_section['heading']}")
+            for j, (orig_chunk, trans_chunk) in enumerate(zip(
+                orig_section.get('chunks', []), 
+                trans_section.get('chunks', [])
+            )):
+                st.markdown(f"#### Chunk {j+1}")
+                col1, col2 = st.columns(2)
+                with col1:
                     st.text_area(
-                        label=f"Thai Heading {section_idx + 1}",
-                        value=trans_section['heading'],
-                        height=68,
-                        key=f"th_heading_{section_idx}_unique"
+                        "English",
+                        value=orig_chunk['content'],
+                        height=200,
+                        key=f"en_section_{i}_chunk_{j}"
                     )
-                
-                for item_idx, item in enumerate(trans_section.get('content', [])):
-                    if item['type'] == 'paragraph':
-                        st.text_area(
-                            label=f"Thai Paragraph {section_idx + 1}.{item_idx + 1}",
-                            value=item.get('text', ''),
-                            height=100,
-                            key=f"th_para_{section_idx}_{item_idx}_unique"
-                        )
-                    elif item['type'] == 'list':
-                        for li_idx, li in enumerate(item.get('items', [])):
-                            st.text_area(
-                                label=f"Thai List Item {section_idx + 1}.{item_idx + 1}.{li_idx + 1}",
-                                value=li,
-                                height=68,
-                                key=f"th_list_{section_idx}_{item_idx}_{li_idx}_unique"
-                            )
-                    elif item['type'] == 'table':
-                        if item.get('headers'):
-                            st.text_area(
-                                label=f"Thai Table Headers {section_idx + 1}.{item_idx + 1}",
-                                value=" | ".join(item['headers']),
-                                height=68,
-                                key=f"th_table_header_{section_idx}_{item_idx}_unique"
-                            )
-                        for row_idx, row in enumerate(item.get('data', [])):
-                            st.text_area(
-                                label=f"Thai Table Row {section_idx + 1}.{item_idx + 1}.{row_idx + 1}",
-                                value=" | ".join(row),
-                                height=68,
-                                key=f"th_table_{section_idx}_{item_idx}_{row_idx}_unique"
-                            )
-                    elif item['type'] == 'quote':
-                        st.text_area(
-                            label=f"Thai Quote {section_idx + 1}.{item_idx + 1}",
-                            value=item.get('text', ''),
-                            height=120,
-                            key=f"th_quote_{section_idx}_{item_idx}_unique"
-                        )
+                with col2:
+                    st.text_area(
+                        "Thai",
+                        value=trans_chunk['content'],
+                        height=200,
+                        key=f"th_section_{i}_chunk_{j}"
+                    )
+                st.markdown("---")  # Separator between chunks
 
-def get_edited_translated_content(translated_content: Dict) -> Dict:
-    """Retrieve edited Thai content from Streamlit session state."""
-    edited_translated = {
-        'title': st.session_state.get('th_title_main_unique', ''),
-        'meta_description': st.session_state.get('th_meta_main_unique', ''),
-        'h1': st.session_state.get('th_h1_main_unique', ''),
-        'sections': []
-    }
-    for idx, section in enumerate(translated_content.get('sections', [])):
-        edited_section = {
-            'heading': st.session_state.get(f"th_heading_{idx}_unique", section.get('heading', '')),
-            'content': []
-        }
-        for item_idx, item in enumerate(section.get('content', [])):
-            if item['type'] == 'paragraph':
-                edited_text = st.session_state.get(f"th_para_{idx}_{item_idx}_unique", item.get('text', ''))
-                edited_section['content'].append({'type': 'paragraph', 'text': edited_text})
-            elif item['type'] == 'list':
-                edited_items = []
-                for li_idx in range(len(item.get('items', []))):
-                    edited_li = st.session_state.get(f"th_list_{idx}_{item_idx}_{li_idx}_unique", item['items'][li_idx])
-                    edited_items.append(edited_li)
-                edited_section['content'].append({'type': 'list', 'items': edited_items, 'list_type': item.get('list_type', 'ul')})
-            elif item['type'] == 'table':
-                edited_table = []
-                for row_idx in range(len(item.get('data', []))):
-                    edited_row = []
-                    for cell_idx in range(len(item['data'][row_idx])):
-                        edited_cell = st.session_state.get(f"th_table_{idx}_{item_idx}_{row_idx}_unique", item['data'][row_idx][cell_idx])
-                        edited_row.append(edited_cell)
-                    edited_table.append(edited_row)
-                edited_section['content'].append({'type': 'table', 'data': edited_table, 'headers': item.get('headers', [])})
-            elif item['type'] == 'quote':
-                edited_quote = st.session_state.get(f"th_quote_{idx}_{item_idx}_unique", item.get('text', ''))
-                edited_section['content'].append({'type': 'quote', 'text': edited_quote})
-        edited_translated['sections'].append(edited_section)
-    return edited_translated
+    # Tags Section
+    with st.expander("Tags", expanded=True):
+        current_tags = st.session_state.get('current_tags', translated.get('tags', []))
+        display_tag_section(current_tags)
 
+async def process_and_translate(original_url: str, original_article: str):
+    """
+    Orchestrate the parsing, translation, and categorization of the article.
+    """
+    # Parse the article
+    structured = parse_article(original_article)
+
+    if structured.get('title') and structured.get('meta_description') and structured.get('sections'):
+        # Add URL to structured content
+        structured['url'] = original_url.strip()
+
+        # Translate the content
+        translated = await translate_content(structured)
+
+        # Store in session state
+        st.session_state['original'] = structured
+        st.session_state['translated'] = translated
+
+        st.success("Content processed and translated successfully.")
+    else:
+        st.error("Failed to parse the article. Please ensure the format is correct.")
 
 def main():
-    st.set_page_config(layout="wide")
-    st.title("Crypto News Translator (EN → TH)")
-    
-    # Initialize session state for content
-    if 'content' not in st.session_state:
-        st.session_state.content = None
-    if 'translated_content' not in st.session_state:
-        st.session_state.translated_content = None
-    if 'url' not in st.session_state:
-        st.session_state.url = DEFAULT_URL
+    try:
+        st.set_page_config(layout="wide")
+        st.title("Crypto News Translator (EN → TH)")
+        
+        # Input Section with default values
+        st.markdown("### Paste the Original English Article URL and Content Below")
 
-    # URL input
-    url = st.text_input("Enter a webpage URL:", value=st.session_state.url)
-    
-    # Extract and Translate button
-    if st.button("Extract and Translate"):
-        st.session_state.url = url
-        if url:
-            with st.spinner("Processing..."):
-                # Fetch webpage
-                html = fetch_webpage(url)
-                
-                if html:
-                    # Extract structured content
-                    content = extract_structured_content(html, url)
-                    st.session_state.content = content  # Assign to session state
-                    
-                    if content.get('sections'):
-                        # Translate content asynchronously
-                        system_prompt = """
-You are a professional Crypto news translator. Your task is to translate this crypto news article from English to Thai.
+        default_url = "https://cryptonews.com/news/solana-price-three-year-high-bitcoin-record-high-donald-trump-election/"
+        default_content = """Solana Hits 3-Year Peak as Bitcoin's Record High Fuels Post-Trump Crypto Rally
 
-Instructions:
-1. Write for Thai audiences with basic crypto knowledge, using semi-professional Thai language.
-2. Use Thai crypto terms where appropriate.
-3. Maintain the original meaning while making it natural in Thai.
-4.If headings and content contain names such as people, company, or coin names, DO NOT translate names but ensure to translate the rest. 
-5. Do not add explanations nor comments. Focus on translating the content. Return only the translated content.
-"""
-                        try:
-                            loop = asyncio.new_event_loop()
-                            asyncio.set_event_loop(loop)
-                            translated_content = loop.run_until_complete(translate_content_async(content, system_prompt))
-                            st.session_state.translated_content = translated_content  # Assign to session state
-                        except Exception as e:
-                            st.error(f"Error during translation: {e}")
-                            translated_content = content  # Fallback to original content
-                            st.session_state.translated_content = translated_content
-                        
-                        st.success("Content extracted and translated.")
-                        # Removed the direct call to display_content_comparison here
-                    else:
-                        st.error("No content could be extracted.")
-                else:
-                    st.error("Failed to fetch webpage.")
-        else:
-            st.warning("Please enter a valid URL.")
-    
-    # If we have content in session state, display it
-    if st.session_state.content and st.session_state.translated_content:
-        # Display content comparison
-        display_content_comparison(st.session_state.content, st.session_state.translated_content)
-        
-        # Retrieve edited content
-        edited_content = get_edited_translated_content(st.session_state.translated_content)
-        
-        # Create and download document
-        with st.spinner("Generating document..."):
-            edited_doc = create_comparison_doc(st.session_state.url, st.session_state.content, edited_content)
-        
-        st.download_button(
-            label="Download Edited Document",
-            data=edited_doc,
-            file_name=f"{urlparse(st.session_state.url).path.strip('/').replace('/', '-')}_edited.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+The week's gains pushed SOL into the elite group of cryptocurrencies with a market cap over $100b.
+
+Solana's cryptocurrency SOL reached a three-year high on Sunday as Bitcoin's record-breaking surge fueled a broad crypto rally after Donald Trump's decisive election win.
+
+SOL surged to $214 early Sunday before settling at $209.88 by 10:38 pm ET. Meanwhile, Bitcoin reached a new record, surpassing $81,000. This spike came in response to Trump's election victory, sparking investor expectations of a more lenient regulatory environment. BTC has now more than doubled since its yearly low of $38,505 in January.
+
+The week's gains made SOL join the elite group of cryptocurrencies, boasting a market cap over $100b. Despite having a much shorter history in the market, it now stands shoulder to shoulder with Bitcoin, Ethereum's ether and Tether (USDT).
+
+Solana's Validator Earnings Surge Past $30M, Fueling Value Growth Amid Network Upgrades
+Further, Solana's value has surged due to a significant rise in validator earnings, now surpassing $30m daily. This growth is driven by recent improvements in the network's transaction processing and reward systems.
+
+Solana last reached the $214 level in Dec. 2021, after peaking at around $260 the previous month and starting to decline. The crypto experienced a steep drop in early 2022, followed by another decline that spring as the crypto market cooled.
+
+The situation deteriorated further with the FTX collapse in Nov. 2022, which impacted Solana significantly due to its connections with the exchange and its founder, Sam Bankman-Fried.
+
+Mixed Future Predictions
+Solana is known for its frequent downtime, stemming from its emphasis on fast transaction processing and scalability over network robustness. Its unique design, which includes using Proof of History for efficient time-stamping and transaction sequencing, enables high-speed performance but has sometimes caused operational issues.
+
+While some are optimistic about Solana's future price trends, not everyone agrees. Analyst Benjamin Cowen, for example, has shown doubt about Solana's momentum compared to Bitcoin as 2024 ends.
+
+Cowen predicts the Solana-to-Bitcoin exchange rate could decline in November and December, with recovery likely only early next year. This cautious view contrasts with the generally positive forecasts for Solana's USD performance"""
+
+        original_url = st.text_input(
+            label="Original English Article URL",
+            value=default_url,
+            help="Paste the URL of the original English article here."
         )
 
+        original_article = st.text_area(
+            label="Original English Article Content",
+            value=default_content,
+            height=300,
+            key="original_article",
+            help="Paste the full English article content here."
+        )
+
+        # Process Button
+        if st.button("Process and Translate"):
+            if not original_url.strip():
+                st.warning("Please enter the Original English Article URL.")
+            elif not original_article.strip():
+                st.warning("Please paste the Original English Article content.")
+            else:
+                with st.spinner("Processing and translating..."):
+                    asyncio.run(process_and_translate(original_url, original_article))
+
+        # Display Comparison if available
+        if 'original' in st.session_state and 'translated' in st.session_state:
+            original = st.session_state['original']
+            translated = st.session_state['translated']
+            
+            # Initialize current_tags in session state if not present
+            if 'current_tags' not in st.session_state:
+                st.session_state['current_tags'] = translated.get('tags', [])
+
+            # Display content comparison
+            display_comparison(original, translated)
+
+            # Download Button
+            if st.session_state['translated']:
+                with st.spinner("Generating document..."):
+                    # Get the latest edited content
+                    edited_translated = {
+                        'title': st.session_state.get('th_title', translated.get('title', '')),
+                        'meta_description': st.session_state.get('th_meta', translated.get('meta_description', '')),
+                        'published_time': translated.get('published_time', ''),
+                        'sections': []
+                    }
+                    
+                    # Get edited sections
+                    for i, section in enumerate(translated.get('sections', [])):
+                        translated_chunks = []
+                        for j, chunk in enumerate(section.get('chunks', [])):
+                            edited_chunk = {
+                                'heading': section.get('heading', ''),
+                                'content': st.session_state.get(f"th_section_{i}_chunk_{j}", chunk.get('content', ''))
+                            }
+                            translated_chunks.append(edited_chunk)
+                        edited_translated['sections'].append({
+                            'heading': section.get('heading', ''),
+                            'chunks': translated_chunks
+                        })
+                    
+                    # Use current tags from session state
+                    edited_translated['tags'] = st.session_state.get('current_tags', [])
+                    
+                    # Create document with latest content and tags
+                    doc = create_docx(original, edited_translated)
+                    
+                st.download_button(
+                    label="📥 Download Translated Document",
+                    data=doc,
+                    file_name="Crypto_News_Translation.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
+
+    except Exception as e:
+        st.error(f"An error occurred: {str(e)}")
 
 if __name__ == "__main__":
     main()

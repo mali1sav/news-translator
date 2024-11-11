@@ -9,3 +9,4 @@ lxml
 trafilatura
 openai
 Pillow
+python-docx
