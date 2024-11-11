@@ -326,10 +326,10 @@ Return only comma-separated tags from the available list."""
         response.raise_for_status()
         data = response.json()
         tags_str = data['choices'][0]['message']['content'].strip()
-        
+
         # Process and validate tags
         suggested_tags = [tag.strip() for tag in tags_str.split(',') if tag.strip() in ALL_TAGS]
-        
+
         # Ensure we have at least one primary category
         has_primary = any(tag in TAGS["Primary Categories"] for tag in suggested_tags)
         if not has_primary:
@@ -340,9 +340,9 @@ Return only comma-separated tags from the available list."""
                 suggested_tags.insert(0, "Ethereum News")
             else:
                 suggested_tags.insert(0, "Altcoin News")
-        
+
         return suggested_tags[:5]  # Return top 5 tags
-        
+
     except Exception as e:
         st.error(f"Categorization error: {e}")
         return []
@@ -353,10 +353,10 @@ def display_tag_section(current_tags: List[str]):
     """
     st.markdown("### Tag Management")
     st.write("Current Tags:", ", ".join(current_tags))
-    
+
     # Create 6 columns
     cols = st.columns(6)
-    
+
     # Column 1: Primary Categories
     with cols[0]:
         st.markdown("##### Primary Categories")
@@ -367,7 +367,7 @@ def display_tag_section(current_tags: List[str]):
                     current_tags.append(tag)
                 elif tag in current_tags:
                     current_tags.remove(tag)
-    
+
     # Column 2: Topics
     with cols[1]:
         st.markdown("##### Topics")
@@ -378,11 +378,11 @@ def display_tag_section(current_tags: List[str]):
                     current_tags.append(tag)
                 elif tag in current_tags:
                     current_tags.remove(tag)
-    
+
     # Column 3-4: Cryptocurrencies (split into two columns due to length)
     crypto_categories = list(TAGS["Cryptocurrencies"].items())
     mid = len(crypto_categories) // 2
-    
+
     with cols[2]:
         st.markdown("##### Cryptocurrencies (1/2)")
         for category, coins in crypto_categories[:mid]:
@@ -394,7 +394,7 @@ def display_tag_section(current_tags: List[str]):
                         current_tags.append(tag)
                     elif tag in current_tags:
                         current_tags.remove(tag)
-    
+
     with cols[3]:
         st.markdown("##### Cryptocurrencies (2/2)")
         for category, coins in crypto_categories[mid:]:
@@ -406,7 +406,7 @@ def display_tag_section(current_tags: List[str]):
                         current_tags.append(tag)
                     elif tag in current_tags:
                         current_tags.remove(tag)
-    
+
     # Column 5: Market Infrastructure - Exchanges & Data
     with cols[4]:
         st.markdown("##### Market Infrastructure (1/2)")
@@ -419,7 +419,7 @@ def display_tag_section(current_tags: List[str]):
                         current_tags.append(tag)
                     elif tag in current_tags:
                         current_tags.remove(tag)
-    
+
     # Column 6: Market Infrastructure - Wallets & Others
     with cols[5]:
         st.markdown("##### Market Infrastructure (2/2)")
@@ -432,7 +432,7 @@ def display_tag_section(current_tags: List[str]):
                         current_tags.append(tag)
                     elif tag in current_tags:
                         current_tags.remove(tag)
-    
+
     # Update session state
     st.session_state['current_tags'] = current_tags
 
@@ -479,12 +479,12 @@ Rules:
         response.raise_for_status()
         data = response.json()
         translated_text = data['choices'][0]['message']['content'].strip()
-        
+
         # Additional check for title length
         if is_title and len(translated_text) > 70:
             # Retry with stronger emphasis on length
             return await translate_text(f"Translate this title in under 70 Thai characters: {text}", is_title=True)
-            
+
         return translated_text
     except Exception as e:
         st.error(f"Translation error: {e}")
@@ -494,7 +494,7 @@ async def translate_section(section: Dict[str, str]) -> Dict[str, str]:
     """
     Translate a single section's heading and content.
     """
-    translated_heading = await translate_text(section.get('heading', ''))
+    translated_heading = await translate_text(section.get('heading', ''), is_h1=True)
     translated_content = await translate_text(section.get('content', ''))
     return {
         'heading': translated_heading,
@@ -520,7 +520,7 @@ async def translate_content(structured_content: Dict[str, Any]) -> Dict[str, Any
     translated['title'] = await translate_text(structured_content.get('title', ''), is_title=True)
     translated['h1'] = await translate_text(structured_content.get('h1', ''), is_h1=True)
     translated['meta_description'] = await translate_text(structured_content.get('meta_description', ''))
-    
+
     # Translate sections concurrently
     sections = structured_content.get('sections', [])
     translated_sections = []
@@ -537,7 +537,7 @@ async def translate_content(structured_content: Dict[str, Any]) -> Dict[str, Any
             'chunks': translated_chunks
         })
     translated['sections'] = translated_sections
-    
+
     # Combine all content for categorization
     combined_content = f"{structured_content.get('title', '')} {structured_content.get('meta_description', '')} " \
                        + ' '.join([
@@ -545,14 +545,14 @@ async def translate_content(structured_content: Dict[str, Any]) -> Dict[str, Any
                            for section in structured_content.get('sections', []) 
                            for chunk in section.get('chunks', [])
                        ])
-    
+
     # Get tags from LLM
     tags = await categorize_with_llm(combined_content)
-    
+
     # Add mandatory tags based on content analysis
     mandatory_tags = []
     content_lower = combined_content.lower()
-    
+
     # Check for major cryptocurrencies
     if 'bitcoin' in content_lower or ' btc ' in content_lower:
         mandatory_tags.extend(['Bitcoin News', 'BTC'])
@@ -560,14 +560,14 @@ async def translate_content(structured_content: Dict[str, Any]) -> Dict[str, Any
         mandatory_tags.extend(['Ethereum News', 'ETH'])
     if 'solana' in content_lower or ' sol ' in content_lower:
         mandatory_tags.extend(['Altcoin News', 'SOL'])
-    
+
     # Check for specific entities
     for category, entities in TAGS["Market Infrastructure"].items():
         for entity in entities:
             if entity.lower() in content_lower:
                 if entity not in mandatory_tags:
                     mandatory_tags.append(entity)
-    
+
     # Remove duplicates while preserving order
     seen = set()
     all_tags = []
@@ -575,7 +575,7 @@ async def translate_content(structured_content: Dict[str, Any]) -> Dict[str, Any
         if tag not in seen and tag in ALL_TAGS:
             seen.add(tag)
             all_tags.append(tag)
-    
+
     translated['tags'] = all_tags[:5]  # Keep top 5 tags
     return translated
 
@@ -584,15 +584,15 @@ def create_docx(original: Dict[str, Any], translated: Dict[str, Any]) -> BytesIO
     Create a .docx document with side-by-side comparison of original and translated content.
     """
     doc = Document()
-    
+
     # Title
     doc.add_heading('Crypto News Translation Comparison', 0)
-    
+
     # Tags section at the top
     current_tags = st.session_state.get('current_tags', [])
     doc.add_paragraph(f"Tags: {', '.join(current_tags)}")
     doc.add_paragraph(f"Original URL: {original.get('url', 'N/A')}")
-    
+
     # Title Comparison
     doc.add_heading('Title', level=1)
     table = doc.add_table(rows=1, cols=2)
@@ -604,6 +604,18 @@ def create_docx(original: Dict[str, Any], translated: Dict[str, Any]) -> BytesIO
     row = table.add_row().cells
     row[0].text = original.get('title', '')
     row[1].text = translated.get('title', '')
+
+    # H1 Comparison
+    doc.add_heading('H1', level=1)
+    table = doc.add_table(rows=1, cols=2)
+    table.style = 'Light List Accent 1'
+    hdr_cells = table.rows[0].cells
+    hdr_cells[0].text = 'English'
+    hdr_cells[1].text = 'Thai'
+
+    row = table.add_row().cells
+    row[0].text = original.get('h1', '')
+    row[1].text = translated.get('h1', '')
 
     # Meta Description Comparison
     doc.add_heading('Meta Description', level=1)
@@ -743,7 +755,7 @@ def main():
     try:
         st.set_page_config(layout="wide")
         st.title("Crypto News Translator (EN → TH)")
-        
+
         # Input Section with default values
         st.markdown("### Paste the Original English Article URL and Content Below")
 
@@ -800,7 +812,7 @@ Cowen predicts the Solana-to-Bitcoin exchange rate could decline in November and
         if 'original' in st.session_state and 'translated' in st.session_state:
             original = st.session_state['original']
             translated = st.session_state['translated']
-            
+
             # Initialize current_tags in session state if not present
             if 'current_tags' not in st.session_state:
                 st.session_state['current_tags'] = translated.get('tags', [])
@@ -814,11 +826,12 @@ Cowen predicts the Solana-to-Bitcoin exchange rate could decline in November and
                     # Get the latest edited content
                     edited_translated = {
                         'title': st.session_state.get('th_title', translated.get('title', '')),
+                        'h1': st.session_state.get('th_h1', translated.get('h1', '')),
                         'meta_description': st.session_state.get('th_meta', translated.get('meta_description', '')),
                         'published_time': translated.get('published_time', ''),
                         'sections': []
                     }
-                    
+
                     # Get edited sections
                     for i, section in enumerate(translated.get('sections', [])):
                         translated_chunks = []
@@ -832,13 +845,13 @@ Cowen predicts the Solana-to-Bitcoin exchange rate could decline in November and
                             'heading': section.get('heading', ''),
                             'chunks': translated_chunks
                         })
-                    
+
                     # Use current tags from session state
                     edited_translated['tags'] = st.session_state.get('current_tags', [])
-                    
+
                     # Create document with latest content and tags
                     doc = create_docx(original, edited_translated)
-                    
+
                 st.download_button(
                     label="📥 Download Translated Document",
                     data=doc,
