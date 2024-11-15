@@ -163,12 +163,12 @@ async def generate_meta_description(content: str) -> str:
     system_prompt = """
 You are a professional crypto content writer. Create a meta description in Thai for this crypto news article.
 Requirements:
-- Exactly 160 characters maximum
+- Keep length no more than 160 characters
 - Capture the key points: price movements, market impact, and key events
 - Use natural Thai language
-- Keep cryptocurrency names in English
 - Focus on the main news angle and impact
-- Return ONLY the meta description text
+- Return ONLY the translated text, no explanations
+- If contain names such as people, company, or coin names, DO NOT translate names but ensure to translate the rest
 """
     try:
         response = await client.post(
@@ -443,10 +443,11 @@ async def translate_text(text: str, is_title: bool = False, is_h1: bool = False)
     if is_title:
         system_prompt = """You are a Thai crypto news translator. Translate this title to Thai.
 Rules:
-- Maximum 70 Thai characters
+- Maximum 60 Thai characters
 - Keep cryptocurrency names in English
 - Maintain key message
 - Return ONLY the translated text, no explanations
+- If contain names such as people, company, or coin names, DO NOT translate names but ensure to translate the rest
 - Do not add quotes or formatting"""
     elif is_h1:
         system_prompt = """You are a Thai crypto news translator. Translate this H1 to Thai.
@@ -455,14 +456,19 @@ Rules:
 - Keep cryptocurrency names in English
 - Maintain full meaning
 - Return ONLY the translated text, no explanations
+- If contain names such as people, company, or coin names, DO NOT translate names but ensure to translate the rest
 - Do not add quotes or formatting"""
     else:
         system_prompt = """You are a Thai crypto news translator. Translate this text to Thai.
 Rules:
 - Use natural Thai language
-- Keep cryptocurrency names in English
+- Write for Thai audiences with basic crypto knowledge, using semi-professional Thai language.
+- Use Thai crypto terms where appropriate.
+- Maintain the original meaning while making it natural in Thai.
 - Return ONLY the translated text, no explanations
-- Do not add quotes or formatting"""
+- If contain names such as people, company, or coin names, DO NOT translate names but ensure to translate the rest
+- Do not add explanations nor comments. Focus on translating the content. Return only the translated content.
+- Do not add quotes nor formatting"""
 
     try:
         response = await client.post(
