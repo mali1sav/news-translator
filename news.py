@@ -2,10 +2,13 @@ import streamlit as st
 import os
 import asyncio
 import httpx
+import json
 from dotenv import load_dotenv
-from docx import Document
+from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from io import BytesIO
 from typing import List, Dict, Any
+from docx import Document
 
 # Load environment variables
 load_dotenv()
@@ -163,35 +166,210 @@ async def generate_meta_description(content: str) -> str:
     system_prompt = """
 You are a professional crypto content writer. Create a meta description in Thai for this crypto news article.
 Requirements:
-- Keep length no more than 160 characters
+- Keep length STRICTLY no more than 120 characters
 - Capture the key points: price movements, market impact, and key events
 - Use natural Thai language
 - Focus on the main news angle and impact
-- Return ONLY the translated text, no explanations
 - If contain names such as people, company, or coin names, DO NOT translate names but ensure to translate the rest
+- Return the meta description in the following JSON format:
+{
+    "meta_description": "your Thai meta description here"
+}
 """
     try:
         response = await client.post(
             "/chat/completions",
             json={
-                "model": "anthropic/claude-3.5-sonnet",
+                "model": "openai/gpt-4o-2024-11-20",
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"Create a Thai meta description for this article:\n{content}"}
-                ]
+                ],
+                "response_format": {
+                    "type": "json_object"
+                }
             },
             timeout=60
         )
         response.raise_for_status()
         data = response.json()
-        thai_meta = data['choices'][0]['message']['content'].strip()
-        # Ensure it's not longer than 160 characters
-        if len(thai_meta) > 160:
-            thai_meta = thai_meta[:157] + "..."
+        
+        # Parse the response content as JSON
+        content = data['choices'][0]['message']['content']
+        parsed_response = json.loads(content)
+        thai_meta = parsed_response['meta_description'].strip()
+        
+        # Ensure it's not longer than 120 characters
+        if len(thai_meta) > 120:
+            thai_meta = thai_meta[:117] + "..."
         return thai_meta
     except Exception as e:
-        st.error(f"Meta description generation error: {e}")
+        st.error(f"Meta description generation error: {str(e)}")
         return "ไม่มีคำอธิบาย"
+
+async def translate_text(text: str, is_title: bool = False, is_h1: bool = False) -> str:
+    """
+    Translate text from English to Thai using OpenRouter's translation service with structured output.
+    """
+    if is_title:
+        system_prompt = """You are a Thai crypto news translator. Translate this title to Thai.
+Rules:
+- Create a compelling news headline
+- Maximum 60 Thai characters. 
+- Do not truncate the content; instead, use concise wording to fit within the limit.
+- Keep cryptocurrency names in English
+- Keep other entity and technical terms in English (e.g. people names, organisation names, platforms, technical concepts, product names etc.) throughout the article, even when the surrounding text is in Thai.
+- Use English names for cryptocurrencies instead of their Thai transliterations throughout the article. For example, use 'Bitcoin' instead of 'บิทคอยน์', 'Ethereum' instead of 'อีเธอเรียม', 'Solana' instead of 'โซลาน่า', etc.
+- Return the translation in the following JSON format:
+{
+    "translated_text": "your Thai translation here"
+}"""
+    elif is_h1:
+        system_prompt = """You are a Thai crypto news translator. Translate this H1 to Thai.
+Rules:
+- Create a news-like headline between 8-15 words
+- Keep cryptocurrency names in English
+- Align with Title.
+- Keep other entity and technical terms in English (e.g. people names, organisation names, platforms, technical concepts, product names etc.) throughout the article, even when the surrounding text is in Thai.
+- Use English names for cryptocurrencies instead of their Thai transliterations throughout the article. For example, use 'Bitcoin' instead of 'บิทคอยน์', 'Ethereum' instead of 'อีเธอเรียม', 'Solana' instead of 'โซลาน่า', etc.
+- Return the translation in the following JSON format:
+{
+    "translated_text": "your Thai translation here"
+}"""
+    else:
+        system_prompt = """You are a Thai crypto news translator. Translate this text to Thai.
+Rules:
+- Use natural Thai language
+- Write for Thai audiences with basic crypto knowledge, using semi-professional Thai language
+- Use Thai crypto terms where appropriate
+- Maintain the original meaning while making it natural in Thai
+- Keep other entity and technical terms in English (e.g. people names, organisation names, platforms, technical concepts, product names etc.) throughout the article, even when the surrounding text is in Thai.
+- Use English names for cryptocurrencies instead of their Thai transliterations throughout the article. For example, use 'Bitcoin' instead of 'บิทคอยน์', 'Ethereum' instead of 'อีเธอเรียม', 'Solana' instead of 'โซลาน่า', etc.
+- Return the translation in the following JSON format:
+{
+    "translated_text": "your Thai translation here"
+}"""
+
+    try:
+        response = await client.post(
+            "/chat/completions",
+            json={
+                "model": "openai/gpt-4o-2024-11-20",
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": text}
+                ],
+                "response_format": {
+                    "type": "json_object"
+                }
+            },
+            timeout=60
+        )
+        response.raise_for_status()
+        data = response.json()
+        
+        # Parse the response content as JSON
+        content = data['choices'][0]['message']['content']
+        parsed_response = json.loads(content)
+        translated_text = parsed_response['translated_text'].strip()
+        
+        # Additional check for title length
+        if is_title and len(translated_text) > 70:
+            # Retry with stronger emphasis on length
+            return await translate_text(text, is_title=True)
+            
+        return translated_text
+        
+    except Exception as e:
+        st.error(f"Translation error: {str(e)}")
+        return text
+
+async def categorize_with_llm(content: str) -> List[str]:
+    """
+    Categorize the news article using Gemini and return a list of relevant tags.
+    """
+    system_prompt = """You are a cryptocurrency news categorization expert. Analyze this article and suggest relevant tags.
+
+Content Analysis Requirements:
+1. Primary Category (Must include one):
+   - If about Bitcoin: "Bitcoin News"
+   - If about Ethereum: "Ethereum News"
+   - If about other cryptocurrencies: "Altcoin News"
+
+2. Specific Cryptocurrencies:
+   - Identify all mentioned cryptocurrencies
+   - Include their ecosystem tags (e.g., "Solana", "Cardano", etc.)
+
+3. Market Infrastructure:
+   - Identify mentioned exchanges, wallets, or data providers
+   - Include relevant infrastructure tags
+
+4. Topics:
+   - Market analysis/trends
+   - Technical developments
+   - Regulatory news
+   - Business developments
+
+5. Special Categories:
+   - Check for DeFi, NFT, or Gaming content
+   - Identify if content relates to Layer 1/Layer 2 solutions
+
+Rules:
+- Maximum 5 most relevant tags
+- Only use tags from the provided list
+- Prioritize specificity over generality
+- Ensure tags accurately reflect the main focus of the article
+
+Return only comma-separated tags from the available list."""
+
+    try:
+        response = await client.post(
+            "/chat/completions",
+            json={
+                "model": "google/gemini-flash-1.5-8b",
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"Available tags:\n{', '.join(ALL_TAGS)}\n\nArticle content for analysis:\n{content}"}
+                ],
+                "temperature": 0.3,  # Lower temperature for more focused responses
+                "max_tokens": 100    # Limit response length
+            },
+            timeout=60
+        )
+        response.raise_for_status()
+        data = response.json()
+        tags_str = data['choices'][0]['message']['content'].strip()
+        
+        # Process and validate tags
+        suggested_tags = [tag.strip() for tag in tags_str.split(',') if tag.strip() in ALL_TAGS]
+        
+        # Ensure we have at least one primary category
+        has_primary = any(tag in TAGS["Primary Categories"] for tag in suggested_tags)
+        if not has_primary:
+            # Add most relevant primary category based on content
+            if 'bitcoin' in content.lower():
+                suggested_tags.insert(0, "Bitcoin News")
+            elif 'ethereum' in content.lower():
+                suggested_tags.insert(0, "Ethereum News")
+            else:
+                suggested_tags.insert(0, "Altcoin News")
+        
+        return suggested_tags[:5]  # Return top 5 tags
+        
+    except Exception as e:
+        st.error(f"Categorization error: {e}")
+        return []
+
+async def translate_section(section: Dict[str, str]) -> Dict[str, str]:
+    """
+    Translate a single section's heading and content.
+    """
+    translated_heading = await translate_text(section.get('heading', ''))
+    translated_content = await translate_text(section.get('content', ''))
+    return {
+        'heading': translated_heading,
+        'content': translated_content
+    }
 
 def parse_article(content: str) -> Dict[str, Any]:
     """
@@ -271,81 +449,159 @@ def parse_article(content: str) -> Dict[str, Any]:
         st.error(f"Error parsing article content: {str(e)}")
         return {'title': '', 'meta_description': 'Not provided', 'h1': '', 'sections': []}
 
-async def categorize_with_llm(content: str) -> List[str]:
+async def translate_content(structured_content: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Categorize the news article using Gemini and return a list of relevant tags.
+    Translate each element of the structured content and categorize with tags.
     """
-    system_prompt = """You are a cryptocurrency news categorization expert. Analyze this article and suggest relevant tags.
-
-Content Analysis Requirements:
-1. Primary Category (Must include one):
-   - If about Bitcoin: "Bitcoin News"
-   - If about Ethereum: "Ethereum News"
-   - If about other cryptocurrencies: "Altcoin News"
-
-2. Specific Cryptocurrencies:
-   - Identify all mentioned cryptocurrencies
-   - Include their ecosystem tags (e.g., "Solana", "Cardano", etc.)
-
-3. Market Infrastructure:
-   - Identify mentioned exchanges, wallets, or data providers
-   - Include relevant infrastructure tags
-
-4. Topics:
-   - Market analysis/trends
-   - Technical developments
-   - Regulatory news
-   - Business developments
-
-5. Special Categories:
-   - Check for DeFi, NFT, or Gaming content
-   - Identify if content relates to Layer 1/Layer 2 solutions
-
-Rules:
-- Maximum 5 most relevant tags
-- Only use tags from the provided list
-- Prioritize specificity over generality
-- Ensure tags accurately reflect the main focus of the article
-
-Return only comma-separated tags from the available list."""
-
-    try:
-        response = await client.post(
-            "/chat/completions",
-            json={
-                "model": "google/gemini-flash-1.5-8b",
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"Available tags:\n{', '.join(ALL_TAGS)}\n\nArticle content for analysis:\n{content}"}
-                ],
-                "temperature": 0.3,  # Lower temperature for more focused responses
-                "max_tokens": 100    # Limit response length
-            },
-            timeout=60
-        )
-        response.raise_for_status()
-        data = response.json()
-        tags_str = data['choices'][0]['message']['content'].strip()
+    translated = {}
+    
+    # Translate title and h1
+    translated['title'] = await translate_text(structured_content.get('title', ''), is_title=True)
+    translated['h1'] = await translate_text(structured_content.get('h1', ''), is_h1=True)
+    
+    # Generate meta description in Thai (no English meta description needed)
+    combined_content = f"{structured_content.get('title', '')} {structured_content.get('h1', '')} " \
+                    + ' '.join([
+                        chunk['content'] 
+                        for section in structured_content.get('sections', []) 
+                        for chunk in section.get('chunks', [])
+                    ])
+    translated['meta_description'] = await generate_meta_description(combined_content)
+    
+    # Translate sections concurrently with progress tracking
+    sections = structured_content.get('sections', [])
+    translated_sections = []
+    
+    for section_idx, section in enumerate(sections):
+        chunks = section.get('chunks', [])
+        translated_chunks = []
         
-        # Process and validate tags
-        suggested_tags = [tag.strip() for tag in tags_str.split(',') if tag.strip() in ALL_TAGS]
+        # Create progress bar for chunks
+        chunk_progress = st.progress(0)
+        st.write(f"Translating section {section_idx + 1}/{len(sections)}...")
         
-        # Ensure we have at least one primary category
-        has_primary = any(tag in TAGS["Primary Categories"] for tag in suggested_tags)
-        if not has_primary:
-            # Add most relevant primary category based on content
-            if 'bitcoin' in content.lower():
-                suggested_tags.insert(0, "Bitcoin News")
-            elif 'ethereum' in content.lower():
-                suggested_tags.insert(0, "Ethereum News")
-            else:
-                suggested_tags.insert(0, "Altcoin News")
+        for chunk_idx, chunk in enumerate(chunks):
+            try:
+                translated_chunk = await translate_section(chunk)
+                translated_chunks.append(translated_chunk)
+                # Update progress
+                chunk_progress.progress((chunk_idx + 1) / len(chunks))
+            except Exception as e:
+                st.error(f"Error translating chunk {chunk_idx + 1} in section {section_idx + 1}: {e}")
+                # Add empty translation to maintain structure
+                translated_chunks.append({
+                    'heading': chunk.get('heading', ''),
+                    'content': 'Translation error occurred'
+                })
         
-        return suggested_tags[:5]  # Return top 5 tags
+        translated_sections.append({
+            'heading': section.get('heading', ''),
+            'chunks': translated_chunks
+        })
         
-    except Exception as e:
-        st.error(f"Categorization error: {e}")
-        return []
+        # Clear progress bar after section is done
+        chunk_progress.empty()
+    
+    translated['sections'] = translated_sections
+    
+    # Get tags from LLM
+    tags = await categorize_with_llm(combined_content)
+    
+    # Add mandatory tags based on content analysis
+    mandatory_tags = []
+    content_lower = combined_content.lower()
+    
+    # Check for major cryptocurrencies
+    if 'bitcoin' in content_lower or ' btc ' in content_lower:
+        mandatory_tags.extend(['Bitcoin News', 'BTC'])
+    if 'ethereum' in content_lower or ' eth ' in content_lower:
+        mandatory_tags.extend(['Ethereum News', 'ETH'])
+    if 'solana' in content_lower or ' sol ' in content_lower:
+        mandatory_tags.extend(['Altcoin News', 'SOL'])
+    
+    # Check for specific entities
+    for category, entities in TAGS["Market Infrastructure"].items():
+        for entity in entities:
+            if entity.lower() in content_lower:
+                if entity not in mandatory_tags:
+                    mandatory_tags.append(entity)
+    
+    # Remove duplicates while preserving order
+    seen = set()
+    all_tags = []
+    for tag in (mandatory_tags + tags):
+        if tag not in seen and tag in ALL_TAGS:
+            seen.add(tag)
+            all_tags.append(tag)
+    
+    translated['tags'] = all_tags[:5]  # Keep top 5 tags
+    return translated
+
+def determine_primary_category(crypto: str) -> str:
+    """
+    Determine the primary category based on the cryptocurrency.
+    """
+    if crypto.lower() == 'bitcoin':
+        return 'Bitcoin News'
+    elif crypto.lower() == 'ethereum':
+        return 'Ethereum News'
+    else:
+        return 'Altcoin News'
+
+def create_docx(original: Dict[str, Any], translated: Dict[str, Any]) -> BytesIO:
+    """
+    Create a properly formatted Word document with structured output.
+    """
+    doc = Document()
+    
+    # Set styles for different heading levels and ensure black color
+    styles = doc.styles
+    for style_name in ['Heading 1', 'Heading 2', 'Heading 3']:
+        style = styles[style_name]
+        style.font.color.rgb = None  # This will make it black
+    
+    # Add URL
+    url_para = doc.add_paragraph()
+    url_run = url_para.add_run('Original URL: ')
+    url_run.bold = True
+    url_para.add_run(original.get('url', ''))
+    
+    # Add separator
+    doc.add_paragraph('_' * 40)
+    
+    # Add Title
+    title_para = doc.add_paragraph()
+    title_label = title_para.add_run('Title: ')
+    title_label.bold = True
+    title_para.add_run(translated.get('title', ''))
+    
+    # Add Meta Description
+    meta_para = doc.add_paragraph()
+    meta_title = meta_para.add_run('Meta Description: ')
+    meta_title.bold = True
+    meta_para.add_run(translated.get('meta_description', ''))
+    
+    # Add separator
+    doc.add_paragraph('_' * 40)
+    
+    # Add H1
+    h1_para = doc.add_paragraph()
+    h1_label = h1_para.add_run('H1: ')
+    h1_label.bold = True
+    h1_para.add_run(translated.get('h1', ''))
+    
+    # Add Main Content without headers
+    for section in translated.get('sections', []):
+        for chunk in section.get('chunks', []):
+            if chunk.get('content'):
+                para = doc.add_paragraph(chunk.get('content', ''))
+                para.paragraph_format.space_after = Pt(12)
+    
+    # Save to BytesIO
+    doc_io = BytesIO()
+    doc.save(doc_io)
+    doc_io.seek(0)
+    return doc_io
 
 def display_tag_section(current_tags: List[str]):
     """
@@ -436,66 +692,6 @@ def display_tag_section(current_tags: List[str]):
     # Update session state
     st.session_state['current_tags'] = current_tags
 
-async def translate_text(text: str, is_title: bool = False, is_h1: bool = False) -> str:
-    """
-    Translate text from English to Thai using OpenRouter's translation service.
-    """
-    if is_title:
-        system_prompt = """You are a Thai crypto news translator. Translate this title to Thai.
-Rules:
-- Maximum 60 Thai characters
-- Keep cryptocurrency names in English
-- Maintain key message
-- Return ONLY the translated text, no explanations
-- If contain names such as people, company, or coin names, DO NOT translate names but ensure to translate the rest
-- Do not add quotes or formatting"""
-    elif is_h1:
-        system_prompt = """You are a Thai crypto news translator. Translate this H1 to Thai.
-Rules:
-- Match the original English length as closely as possible
-- Keep cryptocurrency names in English
-- Maintain full meaning
-- Return ONLY the translated text, no explanations
-- If contain names such as people, company, or coin names, DO NOT translate names but ensure to translate the rest
-- Do not add quotes or formatting"""
-    else:
-        system_prompt = """You are a Thai crypto news translator. Translate this text to Thai.
-Rules:
-- Use natural Thai language
-- Write for Thai audiences with basic crypto knowledge, using semi-professional Thai language.
-- Use Thai crypto terms where appropriate.
-- Maintain the original meaning while making it natural in Thai.
-- Return ONLY the translated text, no explanations
-- If contain names such as people, company, or coin names, DO NOT translate names but ensure to translate the rest
-- Do not add explanations nor comments. Focus on translating the content. Return only the translated content.
-- Do not add quotes nor formatting"""
-
-    try:
-        response = await client.post(
-            "/chat/completions",
-            json={
-                "model": "anthropic/claude-3.5-sonnet",
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": text}
-                ]
-            },
-            timeout=60
-        )
-        response.raise_for_status()
-        data = response.json()
-        translated_text = data['choices'][0]['message']['content'].strip()
-        
-        # Additional check for title length
-        if is_title and len(translated_text) > 70:
-            # Retry with stronger emphasis on length
-            return await translate_text(f"Translate this title in under 70 Thai characters: {text}", is_title=True)
-            
-        return translated_text
-    except Exception as e:
-        st.error(f"Translation error: {e}")
-        return text
-
 async def translate_section(section: Dict[str, str]) -> Dict[str, str]:
     """
     Translate a single section's heading and content.
@@ -506,163 +702,6 @@ async def translate_section(section: Dict[str, str]) -> Dict[str, str]:
         'heading': translated_heading,
         'content': translated_content
     }
-
-def determine_primary_category(crypto: str) -> str:
-    """
-    Determine the primary category based on the cryptocurrency.
-    """
-    if crypto.lower() == 'bitcoin':
-        return 'Bitcoin News'
-    elif crypto.lower() == 'ethereum':
-        return 'Ethereum News'
-    else:
-        return 'Altcoin News'
-
-async def translate_content(structured_content: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Translate each element of the structured content and categorize with tags.
-    """
-    translated = {}
-    translated['title'] = await translate_text(structured_content.get('title', ''), is_title=True)
-    translated['h1'] = await translate_text(structured_content.get('h1', ''), is_h1=True)
-    translated['meta_description'] = await translate_text(structured_content.get('meta_description', ''))
-    
-    # Translate sections concurrently
-    sections = structured_content.get('sections', [])
-    translated_sections = []
-    for section in sections:
-        chunks = section.get('chunks', [])
-        translated_chunks = await asyncio.gather(
-            *[
-                translate_section(chunk)
-                for chunk in chunks
-            ]
-        )
-        translated_sections.append({
-            'heading': section.get('heading', ''),
-            'chunks': translated_chunks
-        })
-    translated['sections'] = translated_sections
-    
-    # Combine all content for categorization
-    combined_content = f"{structured_content.get('title', '')} {structured_content.get('meta_description', '')} " \
-                       + ' '.join([
-                           chunk['content'] 
-                           for section in structured_content.get('sections', []) 
-                           for chunk in section.get('chunks', [])
-                       ])
-    
-    # Get tags from LLM
-    tags = await categorize_with_llm(combined_content)
-    
-    # Add mandatory tags based on content analysis
-    mandatory_tags = []
-    content_lower = combined_content.lower()
-    
-    # Check for major cryptocurrencies
-    if 'bitcoin' in content_lower or ' btc ' in content_lower:
-        mandatory_tags.extend(['Bitcoin News', 'BTC'])
-    if 'ethereum' in content_lower or ' eth ' in content_lower:
-        mandatory_tags.extend(['Ethereum News', 'ETH'])
-    if 'solana' in content_lower or ' sol ' in content_lower:
-        mandatory_tags.extend(['Altcoin News', 'SOL'])
-    
-    # Check for specific entities
-    for category, entities in TAGS["Market Infrastructure"].items():
-        for entity in entities:
-            if entity.lower() in content_lower:
-                if entity not in mandatory_tags:
-                    mandatory_tags.append(entity)
-    
-    # Remove duplicates while preserving order
-    seen = set()
-    all_tags = []
-    for tag in (mandatory_tags + tags):
-        if tag not in seen and tag in ALL_TAGS:
-            seen.add(tag)
-            all_tags.append(tag)
-    
-    translated['tags'] = all_tags[:5]  # Keep top 5 tags
-    return translated
-
-def create_docx(original: Dict[str, Any], translated: Dict[str, Any]) -> BytesIO:
-    """
-    Create a .docx document with side-by-side comparison of original and translated content.
-    """
-    doc = Document()
-    
-    # Title
-    doc.add_heading('Crypto News Translation Comparison', 0)
-    
-    # Tags section at the top
-    current_tags = st.session_state.get('current_tags', [])
-    doc.add_paragraph(f"Tags: {', '.join(current_tags)}")
-    doc.add_paragraph(f"Original URL: {original.get('url', 'N/A')}")
-    
-    # Title Comparison
-    doc.add_heading('Title', level=1)
-    table = doc.add_table(rows=1, cols=2)
-    table.style = 'Light List Accent 1'
-    hdr_cells = table.rows[0].cells
-    hdr_cells[0].text = 'English'
-    hdr_cells[1].text = 'Thai'
-
-    row = table.add_row().cells
-    row[0].text = original.get('title', '')
-    row[1].text = translated.get('title', '')
-
-    # Meta Description Comparison
-    doc.add_heading('Meta Description', level=1)
-    table = doc.add_table(rows=1, cols=2)
-    table.style = 'Light List Accent 1'
-    hdr_cells = table.rows[0].cells
-    hdr_cells[0].text = 'English'
-    hdr_cells[1].text = 'Thai'
-
-    row = table.add_row().cells
-    row[0].text = original.get('meta_description', '')
-    row[1].text = translated.get('meta_description', '')
-
-    # Published Time Comparison
-    doc.add_heading('Published Time', level=1)
-    table = doc.add_table(rows=1, cols=2)
-    table.style = 'Light List Accent 1'
-    hdr_cells = table.rows[0].cells
-    hdr_cells[0].text = 'English'
-    hdr_cells[1].text = 'Thai'
-
-    row = table.add_row().cells
-    row[0].text = original.get('published_time', '')
-    row[1].text = translated.get('published_time', '')  # Assuming time doesn't need translation
-
-    # Main Content Comparison
-    doc.add_heading('Main Content', level=1)
-    for i, (orig_section, trans_section) in enumerate(zip(
-        original.get('sections', []), 
-        translated.get('sections', [])
-    )):
-        doc.add_heading(f"Section {i+1}: {orig_section['heading']}", level=2)
-        for j, (orig_chunk, trans_chunk) in enumerate(zip(
-            orig_section.get('chunks', []), 
-            trans_section.get('chunks', [])
-        )):
-            table = doc.add_table(rows=1, cols=2)
-            table.style = 'Light List Accent 1'
-            hdr_cells = table.rows[0].cells
-            hdr_cells[0].text = 'English'
-            hdr_cells[1].text = 'Thai'
-
-            row = table.add_row().cells
-            row[0].text = orig_chunk['content']
-            row[1].text = trans_chunk['content']
-            
-            doc.add_paragraph()  # Blank line between chunks
-
-    # Save to in-memory file
-    doc_io = BytesIO()
-    doc.save(doc_io)
-    doc_io.seek(0)
-    return doc_io
 
 def display_comparison(original: Dict[str, Any], translated: Dict[str, Any]):
     """
@@ -675,20 +714,44 @@ def display_comparison(original: Dict[str, Any], translated: Dict[str, Any]):
     st.text(f"Tags: {', '.join(translated.get('tags', [])) if translated.get('tags') else 'N/A'}")
     st.markdown("---")
 
+    # Initialize session state for edited content if not exists
+    if 'edited_content' not in st.session_state:
+        st.session_state.edited_content = {
+            'title': translated.get('title', ''),
+            'h1': translated.get('h1', ''),
+            'meta_description': translated.get('meta_description', ''),
+            'sections': translated.get('sections', [])
+        }
+
     # Title, H1 & Meta Description
     with st.expander("Title, H1 & Meta Description", expanded=True):
         col1, col2 = st.columns(2)
         with col1:
             st.subheader("English")
-            st.text_area("Title", value=original.get('title', ''), height=100, key="en_title")
-            st.text_area("H1", value=original.get('h1', ''), height=100, key="en_h1")
-            st.text_area("Meta Description", value=original.get('meta_description', 'Not provided'), height=100, key="en_meta", disabled=True)
+            st.text_area("Title", value=original.get('title', ''), height=100, key="en_title", disabled=True)
+            st.text_area("H1", value=original.get('h1', ''), height=100, key="en_h1", disabled=True)
+            # Empty meta description for English side
+            st.text_area("Meta Description", value="", height=100, key="en_meta", disabled=True)
         with col2:
             st.subheader("Thai")
-            st.text_area("Title", value=translated.get('title', ''), height=100, key="th_title")
-            st.text_area("H1", value=translated.get('h1', ''), height=100, key="th_h1")
-            st.text_area("Meta Description ภาษาไทย", value=translated.get('meta_description', ''), height=100, key="th_meta")
-
+            edited_title = st.text_area("Title", value=st.session_state.edited_content['title'], height=100, key="th_title")
+            edited_h1 = st.text_area("H1", value=st.session_state.edited_content['h1'], height=100, key="th_h1")
+            edited_meta = st.text_area("Meta Description ภาษาไทย (ไม่เกิน 120 ตัวอักษร)", 
+                                     value=st.session_state.edited_content['meta_description'], 
+                                     height=100, 
+                                     key="th_meta",
+                                     help="Meta description should not exceed 120 characters")
+            
+            # Show character count for meta description
+            current_meta_length = len(edited_meta)
+            st.write(f"Meta description length: {current_meta_length}/120 characters")
+            if current_meta_length > 120:
+                st.warning("Meta description exceeds 120 characters limit!")
+            
+            # Update session state
+            st.session_state.edited_content['title'] = edited_title
+            st.session_state.edited_content['h1'] = edited_h1
+            st.session_state.edited_content['meta_description'] = edited_meta
     # Main Content Sections
     with st.expander("Main Content", expanded=True):
         for i, (orig_section, trans_section) in enumerate(zip(
@@ -696,6 +759,14 @@ def display_comparison(original: Dict[str, Any], translated: Dict[str, Any]):
             translated.get('sections', [])
         )):
             st.markdown(f"### Section {i+1}: {orig_section['heading']}")
+            
+            # Initialize section in session state if needed
+            if i >= len(st.session_state.edited_content['sections']):
+                st.session_state.edited_content['sections'].append({
+                    'heading': trans_section['heading'],
+                    'chunks': trans_section['chunks']
+                })
+                
             for j, (orig_chunk, trans_chunk) in enumerate(zip(
                 orig_section.get('chunks', []), 
                 trans_section.get('chunks', [])
@@ -707,23 +778,27 @@ def display_comparison(original: Dict[str, Any], translated: Dict[str, Any]):
                         "English",
                         value=orig_chunk['content'],
                         height=200,
-                        key=f"en_section_{i}_chunk_{j}"
+                        key=f"en_section_{i}_chunk_{j}",
+                        disabled=True
                     )
                 with col2:
-                    st.text_area(
+                    edited_content = st.text_area(
                         "Thai",
-                        value=trans_chunk['content'],
+                        value=st.session_state.edited_content['sections'][i]['chunks'][j]['content'],
                         height=200,
                         key=f"th_section_{i}_chunk_{j}"
                     )
+                    # Update session state with edited content
+                    st.session_state.edited_content['sections'][i]['chunks'][j]['content'] = edited_content
                 st.markdown("---")  # Separator between chunks
 
     # Tags Section
     with st.expander("Tags", expanded=True):
         current_tags = st.session_state.get('current_tags', translated.get('tags', []))
         display_tag_section(current_tags)
+    
 
-async def process_and_translate(original_url: str, original_article: str):
+def process_and_translate(original_url: str, original_article: str):
     """
     Orchestrate the parsing, translation, and categorization of the article.
     """
@@ -735,7 +810,7 @@ async def process_and_translate(original_url: str, original_article: str):
         structured['url'] = original_url.strip()
 
         # Translate the content
-        translated = await translate_content(structured)
+        translated = asyncio.run(translate_content(structured))
 
         # Store in session state
         st.session_state['original'] = structured
@@ -753,30 +828,55 @@ def main():
         # Input Section with default values
         st.markdown("### Paste the Original English Article URL and Content Below")
 
-        default_url = "https://cryptonews.com/news/solana-price-three-year-high-bitcoin-record-high-donald-trump-election/"
-        default_content = """Solana Hits 3-Year Peak as Bitcoin's Record High Fuels Post-Trump Crypto Rally
+        default_url = "https://cryptonews.com/news/u-s-bitcoin-etfs-surpass-100-billion-in-assets-amid-btc-rally/"
+        default_content = """
+BlackRock’s IBIT leads the pack with $45.4 billion in assets, followed by Grayscale’s GBTC with $20.6 billion.
 
-The week's gains pushed SOL into the elite group of cryptocurrencies with a market cap over $100b.
+U.S. spot Bitcoin exchange-traded funds (ETFs) have surpassed $100 billion in total net assets as Bitcoin continues its record-breaking surge.
 
-Solana's cryptocurrency SOL reached a three-year high on Sunday as Bitcoin's record-breaking surge fueled a broad crypto rally after Donald Trump's decisive election win.
+Data from SoSoValue shows that as of Wednesday, the 12 spot Bitcoin ETFs collectively held $100.55 billion, accounting for approximately 5.4% of Bitcoin’s total market capitalization.
 
-SOL surged to $214 early Sunday before settling at $209.88 by 10:38 pm ET. Meanwhile, Bitcoin reached a new record, surpassing $81,000. This spike came in response to Trump's election victory, sparking investor expectations of a more lenient regulatory environment. BTC has now more than doubled since its yearly low of $38,505 in January.
+BlackRock’s IBIT leads the pack with $45.4 billion in assets, followed by Grayscale’s GBTC with $20.6 billion.
 
-The week's gains made SOL join the elite group of cryptocurrencies, boasting a market cap over $100b. Despite having a much shorter history in the market, it now stands shoulder to shoulder with Bitcoin, Ethereum's ether and Tether (USDT).
+Bitcoin Hits New ATH
+Bitcoin itself reached an all-time high, trading around $97,094, a 3.8% increase over the past 24 hours.
 
-Solana's Validator Earnings Surge Past $30M, Fueling Value Growth Amid Network Upgrades
-Further, Solana's value has surged due to a significant rise in validator earnings, now surpassing $30m daily. This growth is driven by recent improvements in the network's transaction processing and reward systems.
+The funds also experienced significant inflows, with $733.5 million recorded on Wednesday and $837.36 million the day before.
 
-Solana last reached the $214 level in Dec. 2021, after peaking at around $260 the previous month and starting to decline. The crypto experienced a steep drop in early 2022, followed by another decline that spring as the crypto market cooled.
+BlackRock’s IBIT saw the highest inflows, receiving $626.5 million, while Fidelity’s FBTC attracted $133.9 million.
 
-The situation deteriorated further with the FTX collapse in Nov. 2022, which impacted Solana significantly due to its connections with the exchange and its founder, Sam Bankman-Fried.
+Smaller contributions included $9.3 million for Bitwise’s BITB and $3.8 million for Ark and 21Shares’ ARKB. However, Grayscale’s GBTC reported no new inflows.
 
-Mixed Future Predictions
-Solana is known for its frequent downtime, stemming from its emphasis on fast transaction processing and scalability over network robustness. Its unique design, which includes using Proof of History for efficient time-stamping and transaction sequencing, enables high-speed performance but has sometimes caused operational issues.
+Trading activity for bitcoin ETFs reached $5.09 billion on Wednesday, down slightly from Tuesday’s $5.71 billion.
 
-While some are optimistic about Solana's future price trends, not everyone agrees. Analyst Benjamin Cowen, for example, has shown doubt about Solana's momentum compared to Bitcoin as 2024 ends.
+Meanwhile, spot Ethereum ETFs in the U.S. continue to see outflows, with $30.3 million withdrawn on Wednesday, marking the fifth consecutive day of negative flows.
 
-Cowen predicts the Solana-to-Bitcoin exchange rate could decline in November and December, with recovery likely only early next year. This cautious view contrasts with the generally positive forecasts for Solana's USD performance"""
+Trading volume for ether ETFs dropped to $338.3 million, compared to $345.1 million the previous day.
+
+“The main driver behind BTC’s rapid rise is still institutional involvement. We have seen large net inflows into BTC ETFs this week. By Wednesday this week, BTC ETFs had achieved a net inflow of $1.8 billion,” Gracy Chen, CEO at Bitget, said in a statement.
+
+Chen noted that MicroStrategy purchased 51,000 BTC last week at a cost of $88,617 each, and this week, they announced plans to raise $2.6 billion to continue purchasing BTC.
+
+“Well-known mining companies are planning to issue $850 million in convertible bonds to buy BTC. The massive spot buying power of traditional funds has caused BTC’s price to rise quickly.”
+
+Meanwhile, the open interest in BTC contracts has surged to $63 billion, with a daily increase of $6 billion.
+
+BTC’s implied volatility (IV) has risen to 60, indicating a higher probability of large market fluctuations in the future.
+
+Chen said that short-term capital has a tendency to lock in profits, which could lead to large price swings around the $100K mark.
+
+Bitwise Asset Management Takes Step Towards Solana ETF
+Bitwise Asset Management has filed to establish a trust entity for its proposed Bitwise Solana ETF in Delaware, marking an early step toward launching the fund as the crypto ETF market continues to see increased demand.
+
+If approved, Bitwise will join other asset managers like VanEck and 21Shares, which have also pursued Solana-focused ETFs.
+
+The filing follows Bitwise’s recent S-1 registration for an XRP ETF, the first fund proposal offering exposure to Ripple’s native cryptocurrency.
+
+The firm has experienced remarkable growth in 2024, with assets under management (AUM) reaching $5 billion as of October 15—a 400% year-to-date surge.
+
+Bitwise’s spot Bitcoin ETF, BITB, has also gained significant traction, drawing $2.3 billion in net inflows since its launch, second only to offerings by BlackRock and Fidelity.
+
+        """
 
         original_url = st.text_input(
             label="Original English Article URL",
@@ -787,7 +887,7 @@ Cowen predicts the Solana-to-Bitcoin exchange rate could decline in November and
         original_article = st.text_area(
             label="Original English Article Content",
             value=default_content,
-            height=300,
+            height=600,
             key="original_article",
             help="Paste the full English article content here."
         )
@@ -800,7 +900,7 @@ Cowen predicts the Solana-to-Bitcoin exchange rate could decline in November and
                 st.warning("Please paste the Original English Article content.")
             else:
                 with st.spinner("Processing and translating..."):
-                    asyncio.run(process_and_translate(original_url, original_article))
+                    process_and_translate(original_url, original_article)
 
         # Display Comparison if available
         if 'original' in st.session_state and 'translated' in st.session_state:
@@ -814,41 +914,13 @@ Cowen predicts the Solana-to-Bitcoin exchange rate could decline in November and
             # Display content comparison
             display_comparison(original, translated)
 
-            # Download Button
-            if st.session_state['translated']:
-                with st.spinner("Generating document..."):
-                    # Get the latest edited content
-                    edited_translated = {
-                        'title': st.session_state.get('th_title', translated.get('title', '')),
-                        'meta_description': st.session_state.get('th_meta', translated.get('meta_description', '')),
-                        'published_time': translated.get('published_time', ''),
-                        'sections': []
-                    }
-                    
-                    # Get edited sections
-                    for i, section in enumerate(translated.get('sections', [])):
-                        translated_chunks = []
-                        for j, chunk in enumerate(section.get('chunks', [])):
-                            edited_chunk = {
-                                'heading': section.get('heading', ''),
-                                'content': st.session_state.get(f"th_section_{i}_chunk_{j}", chunk.get('content', ''))
-                            }
-                            translated_chunks.append(edited_chunk)
-                        edited_translated['sections'].append({
-                            'heading': section.get('heading', ''),
-                            'chunks': translated_chunks
-                        })
-                    
-                    # Use current tags from session state
-                    edited_translated['tags'] = st.session_state.get('current_tags', [])
-                    
-                    # Create document with latest content and tags
-                    doc = create_docx(original, edited_translated)
-                    
+            # Create and offer download of the Word document
+            if translated:
+                doc_io = create_docx(original, st.session_state.edited_content)
                 st.download_button(
-                    label="📥 Download Translated Document",
-                    data=doc,
-                    file_name="Crypto_News_Translation.docx",
+                    label="Download Edited Thai Content in MS Word",
+                    data=doc_io,
+                    file_name="translated_article.docx",
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 )
 
